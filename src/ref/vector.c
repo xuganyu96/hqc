@@ -9,7 +9,8 @@
 #include <string.h>
 #include "parameters.h"
 
-static inline uint32_t compare_u32(const uint32_t v1, const uint32_t v2);
+static inline uint32_t is_equal(const uint32_t v1, const uint32_t v2);
+static inline uint32_t is_less(const uint32_t v1, const uint32_t v2);
 
 /**
  * @brief Constant-time comparison of two integers v1 and v2
@@ -20,8 +21,21 @@ static inline uint32_t compare_u32(const uint32_t v1, const uint32_t v2);
  * @param[in] v1
  * @param[in] v2
  */
-static inline uint32_t compare_u32(const uint32_t v1, const uint32_t v2) {
+static inline uint32_t is_equal(const uint32_t v1, const uint32_t v2) {
     return 1 ^ (((v1 - v2) | (v2 - v1)) >> 31);
+}
+
+/**
+ * @brief Constant-time check that v1 is smaller than v2
+ *
+ * Returns 1 if v1 is smaller than v2 and 0 otherwise: v1 - v2 borrows exactly when v1 < v2, and the borrow shows in
+ * bit 31 as long as both values are below 2^31.
+ *
+ * @param[in] v1 Value below 2^31
+ * @param[in] v2 Value below 2^31
+ */
+static inline uint32_t is_less(const uint32_t v1, const uint32_t v2) {
+    return (v1 - v2) >> 31;
 }
 
 /**
@@ -60,35 +74,24 @@ static inline uint32_t barrett_reduce(uint32_t x) {
  * @param[in]     weight  Desired Hamming weight.
  */
 void vect_generate_random_support1(shake256_xof_ctx *ctx, uint32_t *support, uint16_t weight) {
-    size_t random_bytes_size = 3 * weight;
-    uint8_t rand_bytes[3 * PARAM_OMEGA_R] = {0};
-    uint8_t inc;
-    size_t i, j;
+    uint8_t rand_bytes[3] = {0};
+    uint32_t candidate = 0;
 
-    i = 0;
-    j = random_bytes_size;
-    while (i < weight) {
-        do {
-            if (j == random_bytes_size) {
-                xof_get_bytes(ctx, rand_bytes, random_bytes_size);
-                j = 0;
-            }
+    for (size_t i = 0; i < weight;) {
+        xof_get_bytes(ctx, rand_bytes, 3);
+        candidate = (uint32_t)rand_bytes[0] | ((uint32_t)rand_bytes[1] << 8) | ((uint32_t)rand_bytes[2] << 16);
 
-            support[i] = ((uint32_t)rand_bytes[j++]) << 16;
-            support[i] |= ((uint32_t)rand_bytes[j++]) << 8;
-            support[i] |= rand_bytes[j++];
+        uint32_t accept = is_less(candidate, UTILS_REJECTION_THRESHOLD);
+        candidate = barrett_reduce(candidate);
 
-        } while (support[i] >= UTILS_REJECTION_THRESHOLD);
-
-        support[i] = barrett_reduce(support[i]);
-
-        inc = 1;
-        for (size_t k = 0; k < i; k++) {
-            if (support[k] == support[i]) {
-                inc = 0;
-            }
+        uint32_t found = 0;
+        for (size_t j = 0; j < i; j++) {
+            found |= is_equal(support[j], candidate);
         }
-        i += inc;
+        accept &= found ^ 1;
+
+        support[i] = candidate;
+        i += accept;
     }
 }
 
@@ -115,7 +118,7 @@ void vect_generate_random_support2(shake256_xof_ctx *ctx, uint32_t *support, uin
         uint32_t found = 0;
 
         for (size_t j = i + 1; j < weight; ++j) {
-            found |= compare_u32(support[j], support[i]);
+            found |= is_equal(support[j], support[i]);
         }
 
         uint32_t mask = -found;
