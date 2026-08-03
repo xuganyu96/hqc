@@ -38,15 +38,17 @@
 
 #define PARAM_DELTA                 29          ///< Define the error-correcting capacity (delta) of the Reed-Solomon code
 #define PARAM_M                     8           ///< Define the degree m of the Galois field GF(2^m)
-#define PARAM_GF_POLY               0x11D       ///< Generator polynomial of GF(2^PARAM_M) in hexadecimal form
+#define PARAM_GF_POLY               0x11B       ///< Generator polynomial of GF(2^PARAM_M) in hexadecimal form
 #define PARAM_GF_MUL_ORDER          255         ///< Size of the multiplicative group of GF(2^PARAM_M) (2^PARAM_M−1)
 #define PARAM_K                     32          ///< Define the size of the information bits of the Reed-Solomon code
 #define PARAM_G                     59          ///< Define the size of the generator polynomial of the Reed-Solomon code
 #define PARAM_FFT                   5           ///< Exponent for additive FFT (2^PARAM_FFT points)
 
-#define RS_POLY_COEFS                                                                                                  \
-    49,167,49,39,200,121,124,91,240,63,148,71,150,123,87,101,32,215,159,71,201,115,97,210,186,183,141,217,123,12,31,    \
-    243,180,219,152,239,99,141,4,246,191,144,8,232,47,27,141,178,130,64,124,47,39,188,216,48,199,187,1                  ///< Coefficients of the Reed-Solomon generator polynomial
+#define RS_POLY_COEFS \
+    35, 203, 35, 52, 165, 121, 125, 73, 136, 42, 235, 82, 232, 122, 67, 98, \
+    51, 188, 230, 82, 164, 117, 103, 184, 209, 218, 244, 181, 122, 10, 25, 138, \
+    216, 182, 225, 145, 100, 244, 5, 142, 213, 238, 15, 150, 59, 28, 244, 222, \
+    252, 85, 125, 59, 52, 215, 180, 34, 173, 208, 1  ///< Coefficients of the Reed-Solomon generator polynomial
 
 #define SEED_BYTES                  32          ///< Define the size of the seed in bytes
 #define SALT_BYTES                  16          ///< Define the size of a salt in bytes

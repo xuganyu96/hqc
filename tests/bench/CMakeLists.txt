@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 include(CTest)
 
-file(GLOB BENCH_SRCS
+file(GLOB BENCH_SRCS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmark_*.c"
 )
 

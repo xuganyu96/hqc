@@ -66,6 +66,7 @@ endif()
 set(HQC_SANITIZER "NONE" CACHE STRING "Select a sanitizer: NONE, ASAN, LSAN, MSAN, UBSAN")
 mark_as_advanced(HQC_SANITIZER)
 option(CLANG_FORMAT_ARCH "" "If non-empty, only format files under src/<this>; e.g. ref or x86_64")
+option(HQC_BUILD_TOOLS "Build developer tools under tools/" OFF)
 
 if(HQC_SANITIZER STREQUAL "ASAN")
     list(REMOVE_ITEM HQC_C_FLAGS -O3 -O0)
@@ -97,6 +98,9 @@ set(VARIANTS hqc-1 hqc-3 hqc-5)
 add_subdirectory(lib)
 add_subdirectory(src)
 add_subdirectory(tests)
+if(HQC_BUILD_TOOLS)
+    add_subdirectory(tools)
+endif()
 
 # -----------------------------------------------------------------------------
 # FORMAT, STATIC ANALYSIS, PACKAGING

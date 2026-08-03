@@ -3,7 +3,7 @@
 [![pipeline status](https://gitlab.com/pqc-hqc/hqc/badges/main/pipeline.svg)](https://gitlab.com/pqc-hqc/hqc/-/commits/main)
 [![Latest Release](https://gitlab.com/pqc-hqc/hqc/-/badges/release.svg)](https://gitlab.com/pqc-hqc/hqc/-/releases)
 
-**This repository provides the official implementation of [HQC](https://pqc-hqc.org), a code-based Key Encapsulation Mechanism (KEM) whose security is based on the hardness of solving the Quasi-Cylic Syndrome Decoding (QCSD) problem. HQC is one of the selected algorithms from the [NIST's Post-Quantum Cryptography Standardization Project](https://csrc.nist.gov/projects/post-quantum-cryptography).**
+**This repository provides the official implementation of [HQC](https://pqc-hqc.org), a code-based Key Encapsulation Mechanism (KEM) whose security is based on the hardness of solving the Quasi-Cyclic Syndrome Decoding (QCSD) problem. HQC is one of the selected algorithms from the [NIST's Post-Quantum Cryptography Standardization Project](https://csrc.nist.gov/projects/post-quantum-cryptography).**
 
 # Structure
 
@@ -26,6 +26,7 @@
   + **ref/** – files generated with the reference build
   + **x86_64/avx256** – files generated with the optimized build
 + **packaging/** – scripts and Doxygen docs for packaging and documentation
++ **tools/** – developer utilities
 + **CHANGELOG** – project changelog
 + **CMakeLists.txt** – top-level CMake build script (sub-directories have their own)
 + **LICENSE** – project license
@@ -86,6 +87,10 @@ cmake -S . -B build-avx256 \
 cmake --build build-avx256 -j$(nproc) &&
 ctest  --test-dir build-avx256 -j$(nproc)
 ```
+
+## Developer Tools
+
+Optional developer tools live under `tools/`. Build them with `-DHQC_BUILD_TOOLS=ON`; see [`tools/README.md`](tools/README.md) for commands and usage.
 
 ## Code style & CI - **format *before* every commit**
 
