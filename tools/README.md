@@ -37,8 +37,8 @@ cmake --build build --target rs_constants
 Supported parameter sets: `hqc-1`, `hqc-3`, `hqc-5`.
 
 `generate_reed_solomon_constants hqc-X` prints `RS_POLY_COEFS`,
-`alpha_ij_pow`, `alpha_ij256_*`, and `param256`, with comments showing the
-destination file for each block.
+`alpha_ij_pow`, `alpha_ij_vecs_*`, `rs_generator_vecs`, `eval_alpha_pow`, and
+`beta_inv_pow_lanes`, with comments showing the destination file for each block.
 
 `verify-repo hqc-X` checks the generated Reed-Solomon constants against the
 repository files under `src/ref` and `src/x86_64`.

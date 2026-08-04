@@ -25,6 +25,7 @@
 + **kats/** – official Known-Answer Test (KAT) files
   + **ref/** – files generated with the reference build
   + **x86_64/avx256** – files generated with the optimized build
+  + **rs/** – Reed-Solomon test vectors shared by the ref and x86_64/avx256 builds
 + **packaging/** – scripts and Doxygen docs for packaging and documentation
 + **tools/** – developer utilities
 + **CHANGELOG** – project changelog

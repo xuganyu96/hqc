@@ -14,9 +14,13 @@ static char *read_repo_text_file(const char *path, char resolved_path[RS_PATH_BU
 static int verify_rs_poly_file(const char *path, const rs_constants_t *constants);
 static int verify_alpha_ij_file(const char *path, const rs_constants_t *constants);
 static int verify_avx_file(const char *path, const rs_constants_t *constants);
+static int verify_eval_alpha_pow_file(const char *path, const rs_constants_t *constants);
+static int verify_beta_inv_pow_lanes_file(const char *path, const rs_constants_t *constants);
 static int parse_rs_poly(const char *text, uint16_t *out, size_t count, char *error, size_t error_size);
 static int parse_matrix(const char *text, const char *name, uint16_t *out, size_t rows, size_t cols, char *error,
                         size_t error_size);
+static int parse_flat_array(const char *text, const char *pattern, uint16_t *out, size_t count, const char *name,
+                            char *error, size_t error_size);
 static int parse_vector_array(const char *text, const char *name, uint16_t *out, size_t entries, char *error,
                               size_t error_size);
 static int compare_array(const uint16_t *expected, const uint16_t *actual, size_t count, const char *name, char *error,
@@ -45,6 +49,14 @@ int verify_parameter_set_constants(const rs_constants_t *constants) {
     }
 
     if (verify_avx_file(parameter_set->avx_reed_solomon_path, constants) != 0) {
+        return 1;
+    }
+
+    if (verify_eval_alpha_pow_file(parameter_set->ref_reed_solomon_path, constants) != 0) {
+        return 1;
+    }
+
+    if (verify_beta_inv_pow_lanes_file(parameter_set->avx_reed_solomon_path, constants) != 0) {
         return 1;
     }
 
@@ -178,9 +190,9 @@ static int verify_avx_file(const char *path, const rs_constants_t *constants) {
     }
 
     pack_param_vectors(constants->generator_poly, constants->generator_poly_count, expected_param);
-    status = parse_vector_array(text, "param256", actual_param, param_entries, error, sizeof(error));
+    status = parse_vector_array(text, "rs_generator_vecs", actual_param, param_entries, error, sizeof(error));
     if (status == 0) {
-        status = compare_array(expected_param, actual_param, param_entries * RS_LANES_PER_VECTOR, "param256", error,
+        status = compare_array(expected_param, actual_param, param_entries * RS_LANES_PER_VECTOR, "rs_generator_vecs", error,
                                sizeof(error));
     }
 
@@ -191,11 +203,11 @@ static int verify_avx_file(const char *path, const rs_constants_t *constants) {
     }
 
     for (size_t array_index = 0; array_index < array_count; ++array_index) {
-        char name[32];
+        char name[64];
 
         pack_alpha_ij_vectors(constants->alpha_ij, constants->alpha_ij_rows, constants->alpha_ij_cols,
                               array_index * RS_LANES_PER_VECTOR, expected_alpha_ij_vector);
-        snprintf(name, sizeof(name), "alpha_ij256_%zu", array_index + 1U);
+        snprintf(name, sizeof(name), "alpha_ij_vecs_%zu", array_index + 1U);
 
         status = parse_vector_array(text, name, actual_alpha_ij_vector, constants->alpha_ij_cols, error, sizeof(error));
         if (status == 0) {
@@ -212,6 +224,72 @@ static int verify_avx_file(const char *path, const rs_constants_t *constants) {
 
     free(text);
     return 0;
+}
+
+static int verify_eval_alpha_pow_file(const char *path, const rs_constants_t *constants) {
+    char resolved_path[RS_PATH_BUFFER_SIZE];
+    char error[RS_ERROR_BUFFER_SIZE];
+    size_t count = constants->parameter_set->k * constants->parameter_set->delta;
+    uint16_t actual[RS_MAX_EVAL_ALPHA_POW_SIZE] = {0};
+    char *text = read_repo_text_file(path, resolved_path);
+    int status;
+
+    if (text == NULL) {
+        fprintf(stderr, "failed to read %s\n", path);
+        return 1;
+    }
+
+    status = parse_flat_array(text, "static const uint8_t eval_alpha_pow[", actual, count, "eval_alpha_pow", error,
+                              sizeof(error));
+    if (status == 0) {
+        status = compare_array(constants->eval_alpha_pow, actual, count, "eval_alpha_pow", error, sizeof(error));
+    }
+
+    if (status != 0) {
+        fprintf(stderr, "%s: %s\n", resolved_path, error);
+    }
+
+    free(text);
+    return status;
+}
+
+static int verify_beta_inv_pow_lanes_file(const char *path, const rs_constants_t *constants) {
+    char resolved_path[RS_PATH_BUFFER_SIZE];
+    char error[RS_ERROR_BUFFER_SIZE];
+    size_t count = (constants->parameter_set->delta + 1U) * constants->positions_blocks * RS_LANES_PER_VECTOR;
+    uint16_t actual[RS_MAX_BETA_INV_POW_LANES_SIZE] = {0};
+    char *text = read_repo_text_file(path, resolved_path);
+    int status;
+
+    if (text == NULL) {
+        fprintf(stderr, "failed to read %s\n", path);
+        return 1;
+    }
+
+    status = parse_flat_array(text, "static const uint16_t beta_inv_pow_lanes[", actual, count, "beta_inv_pow_lanes", error,
+                              sizeof(error));
+    if (status == 0) {
+        status = compare_array(constants->beta_inv_pow_lanes, actual, count, "beta_inv_pow_lanes", error, sizeof(error));
+    }
+
+    if (status != 0) {
+        fprintf(stderr, "%s: %s\n", resolved_path, error);
+    }
+
+    free(text);
+    return status;
+}
+
+static int parse_flat_array(const char *text, const char *pattern, uint16_t *out, size_t count, const char *name,
+                            char *error, size_t error_size) {
+    const char *start;
+    const char *end;
+
+    if (find_block(text, pattern, &start, &end, error, error_size) != 0) {
+        return 1;
+    }
+
+    return parse_value_sequence(start, end, out, count, name, error, error_size);
 }
 
 static int parse_rs_poly(const char *text, uint16_t *out, size_t count, char *error, size_t error_size) {
@@ -354,7 +432,25 @@ static int next_integer_token(const char **cursor, const char *end, uint64_t *va
     const char *start = *cursor;
     char *next;
 
-    while (start < end && (*start < '0' || *start > '9')) {
+    /*
+     * Skip whitespace/punctuation as well as C-style block and line comments,
+     * so that digits embedded in comments (e.g. an "i_msg = 0" or
+     * "power j = 3" annotation) are never mistaken for data values.
+     */
+    while (start < end) {
+        if (*start >= '0' && *start <= '9') {
+            break;
+        }
+        if ((end - start) >= 2 && start[0] == '/' && start[1] == '*') {
+            const char *comment_end = strstr(start, "*/");
+            start = (comment_end != NULL && comment_end < end) ? comment_end + 2 : end;
+            continue;
+        }
+        if ((end - start) >= 2 && start[0] == '/' && start[1] == '/') {
+            const char *line_end = memchr(start, '\n', (size_t)(end - start));
+            start = (line_end != NULL) ? line_end + 1 : end;
+            continue;
+        }
         ++start;
     }
 

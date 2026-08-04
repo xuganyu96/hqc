@@ -15,6 +15,10 @@
 #define RS_MAX_ALPHA_IJ_SIZE (RS_MAX_ALPHA_IJ_ROWS * RS_MAX_ALPHA_IJ_COLS)
 #define RS_MAX_PARAM_SIZE (((RS_MAX_RS_POLY_SIZE + RS_LANES_PER_VECTOR - 1U) / RS_LANES_PER_VECTOR) * RS_LANES_PER_VECTOR)
 #define RS_MAX_ALPHA_IJ_VECTOR_SIZE (RS_LANES_PER_VECTOR * RS_MAX_ALPHA_IJ_COLS)
+#define RS_MAX_PARAM_K 32U
+#define RS_MAX_POSITIONS_BLOCKS ((RS_MAX_PARAM_K + RS_LANES_PER_VECTOR - 1U) / RS_LANES_PER_VECTOR)
+#define RS_MAX_EVAL_ALPHA_POW_SIZE (RS_MAX_PARAM_K * RS_MAX_DELTA)
+#define RS_MAX_BETA_INV_POW_LANES_SIZE ((RS_MAX_DELTA + 1U) * RS_MAX_POSITIONS_BLOCKS * RS_LANES_PER_VECTOR)
 
 typedef struct {
     const char *name;
@@ -32,8 +36,13 @@ typedef struct {
     size_t generator_poly_count;
     size_t alpha_ij_rows;
     size_t alpha_ij_cols;
+    size_t positions_blocks;
     uint16_t generator_poly[RS_MAX_RS_POLY_SIZE];
     uint16_t alpha_ij[RS_MAX_ALPHA_IJ_SIZE];
+    /* eval_alpha_pow[i_msg][j-1] = beta^j, beta = alpha^(-(n1-k+i_msg)); rows = k, cols = delta */
+    uint16_t eval_alpha_pow[RS_MAX_EVAL_ALPHA_POW_SIZE];
+    /* beta_inv_pow_lanes[j][block][lane] = beta_{block*16+lane}^j (0 for padding lanes) */
+    uint16_t beta_inv_pow_lanes[RS_MAX_BETA_INV_POW_LANES_SIZE];
 } rs_constants_t;
 
 const parameter_set_t *find_parameter_set(const char *name);

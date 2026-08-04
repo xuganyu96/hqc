@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "crypto_memset.h"
-#include "fft.h"
 #include "gf.h"
 #include "parameters.h"
 #ifdef VERBOSE
@@ -17,31 +16,68 @@
 #endif
 
 /**
- * @brief Number of 16-bit words required to hold a syndrome of length 2·PARAM_DELTA bits
+ * @brief Compiler helpers for constant-time routines.
  *
- * For the 256-bit implementation, each word is 16 bits, so we round
- * up the total bit-length (2·PARAM_DELTA) to the next multiple of 16 bits.
+ * On GCC/Clang, CT_OPAQUE(x) makes the value of x opaque to the optimizer: the
+ * compiler can no longer make assumptions about it, without actually reading or
+ * writing it each time it is referenced. Other compilers fall back to volatile.
+ * This only constrains the optimizer; it is not a memory fence.
  */
-#define SYND_SIZE_256 (CEIL_DIVIDE(2 * PARAM_DELTA, 16))
-
-static uint16_t mod(uint16_t i, uint16_t modulus);
-static void compute_syndromes(__m256i *syndromes, uint8_t *cdw);
-static uint16_t compute_elp(uint16_t *sigma, const uint16_t *syndromes);
-static void compute_roots(uint8_t *error, uint16_t *sigma);
-static void compute_z_poly(uint16_t *z, const uint16_t *sigma, uint16_t degree, const uint16_t *syndromes);
-static void compute_error_values(uint16_t *error_values, const uint16_t *z, const uint8_t *error);
-static void correct_errors(uint8_t *cdw, const uint16_t *error_values);
+#if defined(__GNUC__) || defined(__clang__)
+#define CT_VOLATILE
+#define CT_OPAQUE(var) __asm__("" : "+r"(var) : /* no inputs */)
+#else
+#define CT_VOLATILE volatile
+#define CT_OPAQUE(var)
+#endif
 
 /**
- * @brief Precomputed 256-bit vectors of field elements αᵢʲ for GF(2^8) operations (first half).
- *
- * Each entry packs four 64-bit words into a __m256i, corresponding to the
- * powers of the primitive element α raised to the exponents i·j.
- *
- * The table length (45) matches the number of coefficients needed in the
- * αᵢʲ power table for the chosen code parameters.
+ * @def GF_LANES
+ * @brief Number of GF(2^8) values per AVX2 vector: 16 lanes of 16 bits.
  */
-static const __m256i alpha_ij256_1[55] = {
+#define GF_LANES 16
+
+/**
+ * @def SYND_VEC_COUNT
+ * @brief Number of AVX2 vectors needed to hold the 2·PARAM_T syndromes.
+ *
+ * Rounds the syndrome count (2·PARAM_T) up to the next multiple of \c GF_LANES.
+ */
+#define SYND_VEC_COUNT (CEIL_DIVIDE(2 * PARAM_T, GF_LANES))
+
+/**
+ * @def POSITIONS_BLOCKS
+ * @brief Number of \c GF_LANES-wide blocks needed to cover all message positions.
+ *
+ * This macro rounds up the number of message bytes \c PARAM_K to the next
+ * multiple of \c GF_LANES, matching the lane width used by AVX2 vectors.
+ * It is used to iterate over message positions in fixed-size SIMD blocks
+ * during Chien search / polynomial evaluation.
+ */
+#define POSITIONS_BLOCKS ((PARAM_K + GF_LANES - 1) / GF_LANES)
+
+static inline uint16_t mod(uint16_t i, uint16_t modulus);
+static inline uint16_t make_nonzero_mask(uint16_t x);
+static inline uint8_t is_zero(uint8_t x);
+static inline void compute_syndromes(__m256i *syndrome_vecs, const uint8_t *cdw);
+static inline void compute_error_locator_polynomial(uint16_t *sigma, const uint16_t *syndromes);
+static inline void compute_error_positions(uint8_t *error_positions, const uint16_t *sigma);
+static inline void evaluate_poly_at_all_msg_points(uint8_t *out, const uint16_t *poly);
+static inline void batch_inverse(uint8_t *inv, const uint8_t *a);
+static inline void correct_errors(uint8_t *message, const uint8_t *cdw_bytes, const uint16_t *syndromes,
+                                  const uint16_t *sigma, const uint8_t *error_positions);
+
+/**
+ * @brief Precomputed AVX2 table of \f$\alpha_i^j\f$ powers for syndrome accumulation (part 1/2).
+ *
+ * Each entry is one 256-bit block used by compute_syndromes() for a fixed
+ * codeword position. The 16-bit lanes contain the GF(2^8) powers needed for
+ * one contiguous block of syndrome indices.
+ *
+ * The table has \c PARAM_N1 - 1 entries, one for each non-constant codeword
+ * coefficient processed during syndrome accumulation.
+ */
+static const __m256i alpha_ij_vecs_1[55] = {
     {0x0011000f00050003, 0x001a00ff00550033, 0x00a100960072002e, 0x005f0035001300f8},
     {0x001a005500110005, 0x005f001300a10072, 0x00f7009500d80038, 0x00e50066001e0006},
     {0x00a1002e0055000f, 0x00f7007300380035, 0x003700340066000a, 0x005300ab00d90026},
@@ -100,12 +136,16 @@ static const __m256i alpha_ij256_1[55] = {
 };
 
 /**
- * @brief Precomputed 256-bit vectors of field elements αᵢʲ for GF(2^8) operations (second half).
+ * @brief Precomputed AVX2 table of \f$\alpha_i^j\f$ powers for syndrome accumulation (part 2/2).
  *
- * Same format as alpha_ij256_1, providing the remaining set of powers required
- * for optimized Reed–Solomon arithmetic on 256-bit words with AVX2.
+ * Each entry is one 256-bit block used by compute_syndromes() for a fixed
+ * codeword position. The 16-bit lanes contain the GF(2^8) powers needed for
+ * one contiguous block of syndrome indices.
+ *
+ * The table has \c PARAM_N1 - 1 entries, one for each non-constant codeword
+ * coefficient processed during syndrome accumulation.
  */
-static const __m256i alpha_ij256_2[55] = {
+static const __m256i alpha_ij_vecs_2[55] = {
     {0x00d80048003800e1, 0x00f700a400950073, 0x001e000a00060002, 0x00e500aa00660022},
     {0x006a00eb0037005c, 0x005300e6009000d9, 0x004f004400140004, 0x004c00b200d30068},
     {0x00d300d10044000c, 0x0062003b006700cd, 0x006b009e00780008, 0x00b500db00b3007f},
@@ -167,11 +207,81 @@ static const __m256i alpha_ij256_2[55] = {
  * Coefficients of polynomial G
  * stored in 256-bit values
  **/
-static const __m256i param256[3] = {
+static const __m256i rs_generator_vecs[3] = {
     {0x001e009100b40038, 0x003c001c00690083, 0x00b800ce0021006b, 0x00e7009900f9009b},
     {0x000100e7000b0070, 0x003e004700c90090, 0x00f6008e00960008, 0x0096001a00d60021},
     {0x0000000000000001, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000},
 };
+
+/**
+ * @brief Precomputed evaluation powers for message positions (AVX2, 16-lane blocks).
+ *
+ * This table stores, for each polynomial power index \c j and each SIMD block of
+ * message positions, the field elements needed to evaluate a polynomial at all
+ * message points in parallel (used by Chien search and by polynomial evaluation
+ * in Forney computations).
+ *
+ * Layout:
+ *  - First dimension \c [PARAM_T + 1] :
+ *      power index \c j in {0..PARAM_T}. Row \c j=0 is all ones.
+ *  - Second dimension \c [POSITIONS_BLOCKS] :
+ *      block index over message positions, where each block covers 16 positions.
+ *      \c POSITIONS_BLOCKS = ceil(PARAM_K / 16).
+ *  - Third dimension \c [16] :
+ *      SIMD lane within a block (one lane per message position).
+ */
+__attribute__((aligned(32))) static const uint16_t beta_inv_pow_lanes[PARAM_T + 1][POSITIONS_BLOCKS][GF_LANES] = {
+    {// power j = 0
+     {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+     {1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 1
+     {14, 243, 81, 198, 66, 62, 227, 168, 145, 134, 139, 121, 222, 74, 207, 69},
+     {202, 70, 203, 176, 153, 119, 45, 27, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 2
+     {84, 67, 177, 37, 175, 35, 88, 182, 128, 142, 223, 157, 126, 239, 100, 186},
+     {117, 191, 116, 237, 192, 201, 61, 94, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 3
+     {117, 156, 237, 64, 61, 195, 21, 50, 194, 210, 22, 96, 174, 47, 146, 43},
+     {163, 187, 29, 80, 249, 181, 219, 179, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 4
+     {160, 174, 236, 125, 163, 105, 240, 249, 154, 206, 127, 208, 136, 8, 215, 169},
+     {205, 184, 204, 12, 49, 112, 38, 228, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 5
+     {154, 179, 189, 131, 8, 77, 212, 211, 204, 4, 171, 106, 228, 102, 2, 216},
+     {53, 114, 51, 1, 108, 151, 57, 148, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 6
+     {205, 209, 12, 171, 38, 52, 10, 115, 53, 46, 15, 199, 162, 57, 133, 41},
+     {243, 168, 74, 176, 7, 252, 111, 232, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 7
+     {170, 247, 225, 114, 15, 180, 132, 242, 141, 14, 168, 207, 119, 99, 200, 35},
+     {137, 126, 159, 237, 226, 86, 210, 32, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 8
+     {246, 162, 13, 141, 243, 134, 70, 7, 197, 101, 137, 42, 218, 64, 63, 183},
+     {96, 173, 97, 80, 118, 220, 120, 77, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 9
+     {243, 139, 176, 99, 111, 182, 130, 117, 64, 21, 210, 174, 43, 29, 181, 127},
+     {120, 59, 211, 12, 217, 52, 247, 53, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 10
+     {197, 232, 188, 159, 64, 250, 58, 47, 97, 16, 179, 131, 77, 211, 4, 106},
+     {102, 216, 114, 1, 151, 148, 54, 145, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 11
+     {218, 61, 93, 32, 43, 240, 73, 158, 77, 184, 83, 89, 6, 53, 17, 28},
+     {242, 90, 145, 176, 31, 101, 223, 159, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 12
+     {96, 43, 80, 179, 120, 103, 68, 217, 102, 56, 85, 36, 242, 54, 139, 45},
+     {67, 182, 239, 237, 21, 22, 146, 29, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 13
+     {118, 158, 224, 204, 217, 34, 95, 15, 151, 143, 66, 70, 31, 232, 126, 44},
+     {21, 251, 125, 80, 152, 24, 205, 4, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 14
+     {178, 83, 92, 216, 85, 253, 138, 66, 203, 84, 182, 100, 201, 194, 113, 105},
+     {219, 136, 212, 12, 89, 164, 46, 108, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 15
+     {102, 53, 1, 57, 54, 74, 99, 232, 239, 64, 194, 47, 29, 179, 8, 211},
+     {171, 102, 53, 1, 57, 54, 74, 99, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {// power j = 16
+     {82, 242, 81, 203, 67, 142, 191, 21, 32, 214, 219, 40, 110, 171, 34, 248},
+     {199, 167, 198, 176, 200, 122, 156, 250, 0, 0, 0, 0, 0, 0, 0, 0}}};
 
 /**
  * Returns i modulo the given modulus.
@@ -181,7 +291,7 @@ static const __m256i param256[3] = {
  * @param[in] i The integer whose modulo is taken
  * @param[in] modulus The modulus
  */
-static uint16_t mod(uint16_t i, uint16_t modulus) {
+static inline uint16_t mod(uint16_t i, uint16_t modulus) {
     uint16_t tmp = i - modulus;
 
     // mask = 0xffff if(i < PARAM_GF_MUL_ORDER)
@@ -191,20 +301,54 @@ static uint16_t mod(uint16_t i, uint16_t modulus) {
 }
 
 /**
+ * @brief Constant-time nonzero mask for 16-bit values.
+ *
+ * Returns a full-bit mask:
+ *  - \c 0xFFFF if \p x != 0
+ *  - \c 0x0000 if \p x == 0
+ *
+ * @param x 16-bit input value.
+ * @return 0xFFFF if \p x is nonzero, otherwise 0x0000.
+ */
+static inline uint16_t make_nonzero_mask(uint16_t x) {
+    // 0xFFFF if x != 0 else 0x0000
+    uint16_t CT_VOLATILE mask = (uint16_t)(-((x ^ (uint16_t)(-x)) >> 15));
+    CT_OPAQUE(mask);
+    return mask;
+}
+
+/**
+ * @brief Constant-time zero test for an 8-bit value.
+ *
+ * Returns 1 if \p x is zero, else 0.
+ *
+ * @param x 8-bit input value.
+ * @return 1 if \p x == 0, otherwise 0.
+ */
+static inline uint8_t is_zero(uint8_t x) {
+    // returns 1 if x==0 else 0
+    uint16_t CT_VOLATILE t = x;
+    t |= (uint16_t)(-t);
+    t = (((t >> 8) ^ 1) & 1);
+    CT_OPAQUE(t);
+    return (uint8_t)t;
+}
+
+/**
  * @brief Computes the generator polynomial of the primitive Reed-Solomon code with given parameters.
  *
  * Code length is 2^m-1. <br>
- * PARAM_DELTA is the targeted correction capacity of the code
+ * PARAM_T is the targeted correction capacity of the code
  * and receives the real correction capacity (which is at least equal to the target). <br>
  * gf_exp and gf_log are arrays giving antilog and log of GF(2^m) elements.
  *
- * @param[out] poly Array of size (2*PARAM_DELTA + 1) receiving the coefficients of the generator polynomial
+ * @param[out] poly Array of size (2*PARAM_T + 1) receiving the coefficients of the generator polynomial
  */
 void compute_generator_poly(uint16_t *poly) {
     poly[0] = 1;
     int tmp_degree = 0;
 
-    for (uint16_t i = 1; i < (2 * PARAM_DELTA + 1); ++i) {
+    for (uint16_t i = 1; i < (2 * PARAM_T + 1); ++i) {
         for (size_t j = tmp_degree; j; --j) {
             poly[j] = gf_exp[mod(gf_log[poly[j]] + i, PARAM_GF_MUL_ORDER)] ^ poly[j - 1];
         }
@@ -221,7 +365,7 @@ void compute_generator_poly(uint16_t *poly) {
 }
 
 /**
- * @brief Encodes a message message of PARAM_K bits to a Reed-Solomon codeword codeword of PARAM_N1 bytes
+ * @brief Encode a message into a systematic Reed–Solomon codeword (AVX2-accelerated).
  *
  * Following @cite lin1983error (Chapter 4 - Cyclic Codes),
  * We perform a systematic encoding using a linear (PARAM_N1 - PARAM_K)-stage shift register
@@ -234,33 +378,33 @@ void reed_solomon_encode(uint64_t *cdw, const uint64_t *msg) {
     uint8_t gate_value = 0;
 
     union {
-        uint16_t arr16[16 * CEIL_DIVIDE(PARAM_G, 16)];
-        __m256i dummy;
-    } tmp = {0};
+        uint16_t terms[16 * CEIL_DIVIDE(PARAM_G, 16)];
+        __m256i align;
+    } feedback = {0};
 
     uint8_t msg_bytes[PARAM_K] = {0};
     uint8_t cdw_bytes[PARAM_N1] = {0};
-    __m256i *tmp256 = (__m256i *)tmp.arr16;
-    uint16_t *PARAM_RS_POLY = (uint16_t *)param256;
+    __m256i *feedback_vecs = (__m256i *)feedback.terms;
+    uint16_t *PARAM_RS_POLY = (uint16_t *)rs_generator_vecs;
 
     memcpy(msg_bytes, msg, PARAM_K);
 
     for (int16_t i = PARAM_K - 1; i >= 0; --i) {
         gate_value = msg_bytes[i] ^ cdw_bytes[PARAM_N1 - PARAM_K - 1];
 
-        __m256i gate256 = _mm256_set1_epi16(gate_value);
-        tmp256[0] = gf_mul_vect(gate256, param256[0]);
-        tmp256[1] = gf_mul_vect(gate256, param256[1]);
+        __m256i gate_vec = _mm256_set1_epi16(gate_value);
+        feedback_vecs[0] = gf_mul_vect(gate_vec, rs_generator_vecs[0]);
+        feedback_vecs[1] = gf_mul_vect(gate_vec, rs_generator_vecs[1]);
 
         for (size_t j = 32; j < PARAM_G; ++j) {
-            tmp.arr16[j] = gf_mul(gate_value, PARAM_RS_POLY[j]);
+            feedback.terms[j] = gf_mul(gate_value, PARAM_RS_POLY[j]);
         }
 
         for (size_t k = PARAM_N1 - PARAM_K - 1; k; --k) {
-            cdw_bytes[k] = cdw_bytes[k - 1] ^ tmp.arr16[k];
+            cdw_bytes[k] = cdw_bytes[k - 1] ^ feedback.terms[k];
         }
 
-        cdw_bytes[0] = tmp.arr16[0];
+        cdw_bytes[0] = feedback.terms[0];
     }
 
     memcpy(cdw_bytes + PARAM_N1 - PARAM_K, msg_bytes, PARAM_K);
@@ -268,346 +412,396 @@ void reed_solomon_encode(uint64_t *cdw, const uint64_t *msg) {
 }
 
 /**
- * @brief Computes 2 * PARAM_DELTA syndromes
+ * @brief Compute the 2·PARAM_T syndromes (AVX2).
  *
- * @param[out] syndromes256 Array of size 2 * PARAM_DELTA receiving the computed syndromes
- * @param[in] cdw Array of size PARAM_N1 storing the received vector
+ * Evaluates the received codeword at consecutive powers of the field generator
+ * using precomputed α^{i·j} tables packed in 256-bit vectors. The result is
+ * written into \p syndrome_vecs (viewed as 16-bit lanes; only low bytes matter).
+ *
+ * @param[out] syndrome_vecs Output syndrome storage (AVX2 backing array).
+ * @param[in]  cdw         Received codeword as bytes (\c PARAM_N1 bytes).
  */
-void compute_syndromes(__m256i *syndromes256, uint8_t *cdw) {
-    syndromes256[0] = _mm256_set1_epi16(cdw[0]);
+static inline void compute_syndromes(__m256i *syndrome_vecs, const uint8_t *cdw) {
+#ifdef VERBOSE
+    uint16_t *syndromes = (uint16_t *)syndrome_vecs;
+#endif
+
+    syndrome_vecs[0] = _mm256_set1_epi16(cdw[0]);
 
     for (size_t i = 0; i < PARAM_N1 - 1; ++i) {
-        syndromes256[0] ^= gf_mul_vect(_mm256_set1_epi16(cdw[i + 1]), alpha_ij256_1[i]);
+        syndrome_vecs[0] ^= gf_mul_vect(_mm256_set1_epi16(cdw[i + 1]), alpha_ij_vecs_1[i]);
     }
 
-    syndromes256[1] = _mm256_set1_epi16(cdw[0]);
+    syndrome_vecs[1] = _mm256_set1_epi16(cdw[0]);
 
     for (size_t i = 0; i < PARAM_N1 - 1; ++i) {
-        syndromes256[1] ^= gf_mul_vect(_mm256_set1_epi16(cdw[i + 1]), alpha_ij256_2[i]);
+        syndrome_vecs[1] ^= gf_mul_vect(_mm256_set1_epi16(cdw[i + 1]), alpha_ij_vecs_2[i]);
     }
-}
-
-/**
- * @brief Computes the error locator polynomial (ELP) sigma
- *
- * This is a constant time implementation of Berlekamp's algorithm (see @cite lin1983error (Chapter 6 - BCH Codes). <br>
- * We use the letter p for rho which is initialized at -1. <br>
- * The array X_sigma_p represents the polynomial X^(mu-rho)*sigma_p(X). <br>
- * Instead of maintaining a list of sigmas, we update in place both sigma and X_sigma_p. <br>
- * sigma_copy serves as a temporary save of sigma in case X_sigma_p needs to be updated. <br>
- * We can properly correct only if the degree of sigma does not exceed PARAM_DELTA.
- * This means only the first PARAM_DELTA + 1 coefficients of sigma are of value
- * and we only need to save its first PARAM_DELTA - 1 coefficients.
- *
- * @returns the degree of the ELP sigma
- * @param[out] sigma Array of size (at least) PARAM_DELTA receiving the ELP
- * @param[in] syndromes Array of size (at least) 2*PARAM_DELTA storing the syndromes
- */
-static uint16_t compute_elp(uint16_t *sigma, const uint16_t *syndromes) {
-    uint16_t deg_sigma = 0;
-    uint16_t deg_sigma_p = 0;
-    uint16_t deg_sigma_copy = 0;
-    uint16_t sigma_copy[PARAM_DELTA + 1] = {0};
-    uint16_t X_sigma_p[PARAM_DELTA + 1] = {0, 1};
-    uint16_t pp = (uint16_t)-1;  // 2*rho
-    uint16_t d_p = 1;
-    uint16_t d = syndromes[0];
-
-    uint16_t mask1, mask2, mask12;
-    uint16_t deg_X, deg_X_sigma_p;
-    uint16_t dd;
-    uint16_t mu;
-
-    uint16_t i;
-
-    sigma[0] = 1;
-    for (mu = 0; (mu < (2 * PARAM_DELTA)); ++mu) {
-        // Save sigma in case we need it to update X_sigma_p
-        memcpy(sigma_copy, sigma, 2 * (PARAM_DELTA));
-        deg_sigma_copy = deg_sigma;
-
-        dd = gf_mul(d, gf_inverse(d_p));
-
-        for (i = 1; (i <= mu + 1) && (i <= PARAM_DELTA); ++i) {
-            sigma[i] ^= gf_mul(dd, X_sigma_p[i]);
-        }
-
-        deg_X = mu - pp;
-        deg_X_sigma_p = deg_X + deg_sigma_p;
-
-        // mask1 = 0xffff if(d != 0) and 0 otherwise
-        mask1 = -((uint16_t)-d >> 15);
-
-        // mask2 = 0xffff if(deg_X_sigma_p > deg_sigma) and 0 otherwise
-        mask2 = -((uint16_t)(deg_sigma - deg_X_sigma_p) >> 15);
-
-        // mask12 = 0xffff if the deg_sigma increased and 0 otherwise
-        volatile uint16_t mask12__ = mask1 & mask2;
-        mask12 = mask12__;
-        deg_sigma ^= mask12 & (deg_X_sigma_p ^ deg_sigma);
-
-        if (mu == (2 * PARAM_DELTA - 1)) {
-            break;
-        }
-
-        pp ^= mask12 & (mu ^ pp);
-        d_p ^= mask12 & (d ^ d_p);
-        for (i = PARAM_DELTA; i; --i) {
-            X_sigma_p[i] = (mask12 & sigma_copy[i - 1]) ^ (~mask12 & X_sigma_p[i - 1]);
-        }
-
-        deg_sigma_p ^= mask12 & (deg_sigma_copy ^ deg_sigma_p);
-        d = syndromes[mu + 1];
-
-        for (i = 1; (i <= mu + 1) && (i <= PARAM_DELTA); ++i) {
-            d ^= gf_mul(sigma[i], syndromes[mu + 1 - i]);
-        }
-    }
-
-    return deg_sigma;
-}
-
-/**
- * @brief Computes the error polynomial error from the error locator polynomial sigma
- *
- * See function fft for more details.
- *
- * @param[out] error Array of 2^PARAM_M elements receiving the error polynomial
- * @param[in] sigma Array of 2^PARAM_FFT elements storing the error locator polynomial
- */
-static void compute_roots(uint8_t *error, uint16_t *sigma) {
-    uint16_t w[1 << PARAM_M] = {0};
-
-    fft(w, sigma, PARAM_DELTA + 1);
-    fft_retrieve_error_poly(error, w);
-}
-
-/**
- * @brief Computes the polynomial z(x)
- *
- * See @cite lin1983error (Chapter 6 - BCH Codes) for more details.
- *
- * @param[out] z Array of PARAM_DELTA + 1 elements receiving the polynomial z(x)
- * @param[in] sigma Array of 2^PARAM_FFT elements storing the error locator polynomial
- * @param[in] degree Integer that is the degree of polynomial sigma
- * @param[in] syndromes Array of 2 * PARAM_DELTA storing the syndromes
- */
-static void compute_z_poly(uint16_t *z, const uint16_t *sigma, uint16_t degree, const uint16_t *syndromes) {
-    size_t i, j;
-    uint16_t mask;
-
-    z[0] = 1;
-
-    for (i = 1; i < PARAM_DELTA + 1; ++i) {
-        mask = -((uint16_t)(i - degree - 1) >> 15);
-        z[i] = mask & sigma[i];
-    }
-
-    z[1] ^= syndromes[0];
-
-    for (i = 2; i <= PARAM_DELTA; ++i) {
-        mask = -((uint16_t)(i - degree - 1) >> 15);
-        z[i] ^= mask & syndromes[i - 1];
-
-        for (j = 1; j < i; ++j) {
-            z[i] ^= mask & gf_mul(sigma[j], syndromes[i - j - 1]);
-        }
-    }
-}
-
-/**
- * @brief Computes the error values
- *
- * See @cite lin1983error (Chapter 6 - BCH Codes) for more details.
- *
- * @param[out] error_values Array of PARAM_DELTA elements receiving the error values
- * @param[in] z Array of PARAM_DELTA + 1 elements storing the polynomial z(x)
- * @param[in] error Array of PARAM_DELTA elements storing the errors positions
- */
-static void compute_error_values(uint16_t *error_values, const uint16_t *z, const uint8_t *error) {
-    uint16_t beta_j[PARAM_DELTA] = {0};
-    uint16_t e_j[PARAM_DELTA] = {0};
-
-    uint16_t delta_counter;
-    uint16_t delta_real_value;
-    uint16_t found;
-    uint16_t mask1;
-    uint16_t mask2;
-    uint16_t tmp1;
-    uint16_t tmp2;
-    uint16_t inverse;
-    uint16_t inverse_power_j;
-
-    // Compute the beta_{j_i} page 31 of the documentation
-    delta_counter = 0;
-    for (size_t i = 0; i < PARAM_N1; i++) {
-        found = 0;
-        mask1 = (uint16_t)(-((int32_t)error[i]) >> 31);  // error[i] != 0
-        for (size_t j = 0; j < PARAM_DELTA; j++) {
-            mask2 = ~((uint16_t)(-((int32_t)j ^ delta_counter) >> 31));  // j == delta_counter
-            beta_j[j] += mask1 & mask2 & gf_exp[i];
-            found += mask1 & mask2 & 1;
-        }
-        delta_counter += found;
-    }
-    delta_real_value = delta_counter;
-
-    // Compute the e_{j_i} page 31 of the documentation
-    for (size_t i = 0; i < PARAM_DELTA; ++i) {
-        tmp1 = 1;
-        tmp2 = 1;
-        inverse = gf_inverse(beta_j[i]);
-        inverse_power_j = 1;
-
-        for (size_t j = 1; j <= PARAM_DELTA; ++j) {
-            inverse_power_j = gf_mul(inverse_power_j, inverse);
-            tmp1 ^= gf_mul(inverse_power_j, z[j]);
-        }
-        for (size_t k = 1; k < PARAM_DELTA; ++k) {
-            tmp2 = gf_mul(tmp2, (1 ^ gf_mul(inverse, beta_j[(i + k) % PARAM_DELTA])));
-        }
-        mask1 = (uint16_t)(((int16_t)i - delta_real_value) >> 15);  // i < delta_real_value
-        e_j[i] = mask1 & gf_mul(tmp1, gf_inverse(tmp2));
-    }
-
-    // Place the delta e_{j_i} values at the right coordinates of the output vector
-    delta_counter = 0;
-    for (size_t i = 0; i < PARAM_N1; ++i) {
-        found = 0;
-        mask1 = (uint16_t)(-((int32_t)error[i]) >> 31);  // error[i] != 0
-        for (size_t j = 0; j < PARAM_DELTA; j++) {
-            mask2 = ~((uint16_t)(-((int32_t)j ^ delta_counter) >> 31));  // j == delta_counter
-            error_values[i] += mask1 & mask2 & e_j[j];
-            found += mask1 & mask2 & 1;
-        }
-        delta_counter += found;
-    }
-}
-
-/**
- * @brief Correct the errors
- *
- * @param[out] cdw Array of PARAM_N1 elements receiving the corrected vector
- * @param[in] error_values Array of PARAM_DELTA elements storing the error values
- */
-static void correct_errors(uint8_t *cdw, const uint16_t *error_values) {
-    for (size_t i = 0; i < PARAM_N1; ++i) {
-        cdw[i] ^= error_values[i];
-    }
-}
-
-/**
- * @brief Decodes the received word
- *
- * This function relies on six steps:
- * -# Compute the 2·PARAM_DELTA syndromes.
- * -# Compute the error-locator polynomial σ(x).
- * -# Use an additive FFT to find the roots of σ(x) (the error locations) and take their inverses.
- * -# Compute the error-evaluator polynomial z(x).
- * -# Compute the error values at each located position.
- * -# Correct the received polynomial by subtracting the error values.
- *
- * For a more complete picture on Reed-Solomon decoding, see Shu. Lin and Daniel J. Costello in Error Control Coding:
- * Fundamentals and Applications @cite lin1983error
- *
- * @param[out] msg Array of size VEC_K_SIZE_64 receiving the decoded message
- * @param[in] cdw Array of size VEC_N1_SIZE_64 storing the received word
- */
-void reed_solomon_decode(uint64_t *msg, uint64_t *cdw) {
-    uint8_t cdw_bytes[PARAM_N1] = {0};
-    __m256i syndromes256[SYND_SIZE_256];
-    uint16_t *syndromes = (uint16_t *)syndromes256;
-    uint16_t sigma[1 << PARAM_FFT] = {0};
-    uint8_t error[1 << PARAM_M] = {0};
-    uint16_t z[PARAM_N1] = {0};
-    uint16_t error_values[PARAM_N1] = {0};
-    uint16_t deg;
-
-    // Copy the vector in an array of bytes
-    memcpy(cdw_bytes, cdw, PARAM_N1);
-
-    // Calculate the 2*PARAM_DELTA syndromes
-    compute_syndromes(syndromes256, cdw_bytes);
-
-    // Compute the error locator polynomial sigma
-    // Sigma's degree is at most PARAM_DELTA but the FFT requires the extra room
-    deg = compute_elp(sigma, syndromes);
-
-    // Compute the error polynomial error
-    compute_roots(error, sigma);
-
-    // Compute the polynomial z(x)
-    compute_z_poly(z, sigma, deg, syndromes);
-
-    // Compute the error values
-    compute_error_values(error_values, z, error);
-
-    // Correct the errors
-    correct_errors(cdw_bytes, error_values);
-
-    // Retrieve the message from the decoded codeword
-    memcpy(msg, cdw_bytes + (PARAM_G - 1), PARAM_K);
 
 #ifdef VERBOSE
     printf("\n\nThe syndromes: ");
-    for (size_t i = 0; i < 2 * PARAM_DELTA; ++i) {
-        printf("%u ", syndromes[i]);
+    for (size_t i = 0; i < 2 * PARAM_T; ++i) {
+        printf("%u ", (unsigned)(syndromes[i] & 0xFF));
     }
+#endif
+}
+
+/**
+ * @brief Compute the Reed–Solomon error-locator polynomial (constant-time Berlekamp–Massey).
+ *
+ * @param[out] sigma     Error-locator polynomial, \c PARAM_T+1 GF(2^8) coefficients.
+ * @param[in]  syndrome  Syndromes \f$S_0,\ldots,S_{2\,\texttt{PARAM\_T}-1}\f$.
+ */
+static inline void compute_error_locator_polynomial(uint16_t *sigma, const uint16_t *syndrome) {
+    uint16_t deg_sigma = 0;
+    uint16_t sigma_mu[PARAM_T + 1] = {0};
+    uint16_t deg_sigma_mu = 0;
+    uint16_t x_sigma_rho[PARAM_T + 1] = {0, 1};
+    uint16_t deg_sigma_rho = 0;
+    uint16_t rho = (uint16_t)-1;
+    uint16_t d_rho = 1;
+    uint16_t d_mu = syndrome[0];
+    uint16_t mu, i;
+
+    sigma[0] = 1;
+    for (mu = 0; mu < (2 * PARAM_T); ++mu) {
+        uint16_t d_nonzero_mask = (uint16_t)(-((uint16_t)-d_mu >> 15));
+
+        memcpy(sigma_mu, sigma, sizeof sigma_mu);
+        deg_sigma_mu = deg_sigma;
+
+        uint16_t d_mu_over_d_rho = gf_mul(d_mu, gf_inverse(d_rho));
+        for (i = 1; (i <= mu + 1) && (i <= PARAM_T); ++i) {
+            sigma[i] ^= gf_mul(d_mu_over_d_rho, x_sigma_rho[i]);
+        }
+
+        uint16_t deg_x_sigma_rho = (uint16_t)((uint16_t)(mu - rho) + deg_sigma_rho);
+
+        uint16_t deg_would_grow_mask = (uint16_t)(-((uint16_t)(deg_sigma_mu - deg_x_sigma_rho) >> 15));
+
+        volatile uint16_t promote_mask__ = d_nonzero_mask & deg_would_grow_mask;
+        uint16_t promote_mask = promote_mask__;
+
+        deg_sigma ^= promote_mask & (deg_x_sigma_rho ^ deg_sigma);
+
+        for (i = PARAM_T; i; --i) {
+            x_sigma_rho[i] = (promote_mask & sigma_mu[i - 1]) ^ (~promote_mask & x_sigma_rho[i - 1]);
+        }
+        deg_sigma_rho ^= promote_mask & (deg_sigma_mu ^ deg_sigma_rho);
+        rho ^= promote_mask & (mu ^ rho);
+        d_rho ^= promote_mask & (d_mu ^ d_rho);
+
+        if (mu + 1 < 2 * PARAM_T) {
+            d_mu = syndrome[mu + 1];
+            for (i = 1; (i <= mu + 1) && (i <= PARAM_T); ++i) {
+                d_mu ^= gf_mul(sigma[i], syndrome[mu + 1 - i]);
+            }
+        }
+    }
+
+    memset_zero(sigma_mu, sizeof sigma_mu);
+    memset_zero(x_sigma_rho, sizeof x_sigma_rho);
+
+#ifdef VERBOSE
     printf("\n\nThe error locator polynomial: sigma(x) = ");
     bool first_coeff = true;
-    if (sigma[0]) {
-        printf("%u", sigma[0]);
-        first_coeff = false;
-    }
-    for (size_t i = 1; i < (1 << PARAM_FFT); ++i) {
-        if (sigma[i] == 0)
+    for (size_t i = 0; i <= PARAM_T; ++i) {
+        uint16_t c = (uint16_t)(sigma[i] & 0xFF);
+        if (c == 0)
             continue;
+
         if (!first_coeff)
             printf(" + ");
         first_coeff = false;
-        if (sigma[i] != 1)
-            printf("%u ", sigma[i]);
-        if (i == 1)
-            printf("x");
-        else
-            printf("x^%zu", i);
+
+        if (i == 0) {
+            printf("%u", (unsigned)c);
+        } else {
+            if (c != 1)
+                printf("%u*", (unsigned)c);
+            if (i == 1)
+                printf("x");
+            else
+                printf("x^%zu", i);
+        }
     }
     if (first_coeff)
         printf("0");
+#endif
+}
 
-    printf("\n\nThe polynomial: z(x) = ");
-    bool first_coeff_1 = true;
-    if (z[0]) {
-        printf("%u", z[0]);
-        first_coeff_1 = false;
-    }
-    for (size_t i = 1; i < (PARAM_DELTA + 1); ++i) {
-        if (z[i] == 0)
-            continue;
-        if (!first_coeff_1)
-            printf(" + ");
-        first_coeff_1 = false;
-        if (z[i] != 1)
-            printf("%u ", z[i]);
-        if (i == 1)
-            printf("x");
-        else
-            printf("x^%zu", i);
-    }
-    if (first_coeff_1)
-        printf("0");
+/**
+ * @brief Compute error positions on the message part using Chien search (AVX2).
+ *
+ * Evaluates the error-locator polynomial \f$\sigma(x)\f$ at all message evaluation
+ * points and outputs a 0/1 flag per message position indicating whether that
+ * position is a root (hence an error location).
+ *
+ * The output layout is message-only:
+ * - \c error_positions[i] corresponds to the message byte at codeword index
+ *   \c (PARAM_N1 - PARAM_K + i).
+ *
+ * This implementation processes message positions in fixed 16-lane AVX2 blocks
+ * using the precomputed table \c beta_inv_pow_lanes.
+ *
+ * @param[out] error_positions Output error flags (size \c PARAM_K), each entry is 0 or 1.
+ * @param[in]  sigma   Error-locator polynomial coefficients (size \c PARAM_T+1).
+ */
+static inline void compute_error_positions(uint8_t *error_positions, const uint16_t *sigma) {
+    const __m256i vzero = _mm256_setzero_si256();
+    const __m256i sigma_zero_vec = _mm256_set1_epi16((uint16_t)(sigma[0] & 0xFF));
 
-    printf("\n\nThe pairs of (error locator numbers, error values): ");
-    size_t j = 0;
-    for (size_t i = 0; i < PARAM_N1; ++i) {
-        if (error[i]) {
-            printf("(%zu, %d) ", i, error_values[j]);
-            j++;
+    uint8_t flags[POSITIONS_BLOCKS * GF_LANES];
+
+    for (size_t pos_blk = 0; pos_blk < POSITIONS_BLOCKS; ++pos_blk) {
+        __m256i sigma_eval = sigma_zero_vec;
+
+        for (size_t coef_idx = 1; coef_idx <= PARAM_T; ++coef_idx) {
+            const __m256i sigma_coeff_vec = _mm256_set1_epi16((uint16_t)(sigma[coef_idx] & 0xFF));
+
+            const __m256i eval_pow_vec = _mm256_loadu_si256((const __m256i *)beta_inv_pow_lanes[coef_idx][pos_blk]);
+
+            const __m256i prod = gf_mul_vect(sigma_coeff_vec, eval_pow_vec);
+            sigma_eval = _mm256_xor_si256(sigma_eval, prod);
+        }
+
+        const __m256i is_root_mask = _mm256_cmpeq_epi16(sigma_eval, vzero);
+
+        uint16_t root_mask_lanes[GF_LANES];
+        _mm256_storeu_si256((__m256i *)root_mask_lanes, is_root_mask);
+
+        for (size_t lane = 0; lane < GF_LANES; ++lane) {
+            flags[pos_blk * GF_LANES + lane] = (uint8_t)((root_mask_lanes[lane] >> 15) & 1u);
         }
     }
-    printf("\n");
+
+    memcpy(error_positions, flags, PARAM_K);
+    memset_zero(flags, sizeof flags);
+}
+
+/**
+ * @brief Evaluate a polynomial at all message evaluation points (AVX2).
+ *
+ * Computes \f$y_i = \mathrm{poly}(x_i)\f$ for every message position \f$i \in [0, \texttt{PARAM\_K}-1]\f$
+ * using AVX2 over 16 positions at a time. The evaluation points \f$x_i\f$ (with the same neg/pos
+ * convention used by this RS implementation) are provided by the precomputed table
+ * \c beta_inv_pow_lanes.
+ *
+ * Output layout is message-only:
+ * - \c out[i] corresponds to message index \c i (i.e., codeword index \c PARAM_N1-PARAM_K+i).
+ *
+ * @param[out] out  Output array of size \c PARAM_K holding \f$\mathrm{poly}(x_i)\f$ (GF(2^8) in low byte).
+ * @param[in]  poly Polynomial coefficients, size \c PARAM_T+1 (GF(2^8) in low byte).
+ */
+static inline void evaluate_poly_at_all_msg_points(uint8_t *out, const uint16_t *poly) {
+    uint16_t eval_lanes[GF_LANES];
+    uint8_t outbuf[POSITIONS_BLOCKS * GF_LANES];
+    for (size_t b = 0; b < POSITIONS_BLOCKS; ++b) {
+        __m256i acc = _mm256_set1_epi16((uint16_t)(poly[0] & 0xFF));
+        for (uint16_t j = 1; j <= PARAM_T; ++j) {
+            __m256i cj = _mm256_set1_epi16((uint16_t)(poly[j] & 0xFF));
+            __m256i xj = _mm256_loadu_si256((const __m256i *)&beta_inv_pow_lanes[j][b][0]);
+            __m256i prd = gf_mul_vect(cj, xj);
+            acc ^= prd;
+        }
+
+        _mm256_storeu_si256((__m256i *)eval_lanes, acc);
+        for (size_t l = 0; l < GF_LANES; ++l) outbuf[b * GF_LANES + l] = (uint8_t)(eval_lanes[l] & 0xFF);
+    }
+    memcpy(out, outbuf, PARAM_K);
+    memset_zero(outbuf, sizeof outbuf);
+}
+
+/**
+ * @brief Constant-time batch inversion in GF(2^8).
+ *
+ * Inverts all PARAM_K elements with a single field inversion:
+ * \f$\mathrm{inv}[i] = \big(\prod_{k<i} a[k]\big)\big(\prod_{k>i} a[k]\big)\big(\prod_k a[k]\big)^{-1}\f$.
+ * Zero inputs are mapped to 1 so 0 is never inverted.
+ *
+ * @param[out] inv Output inverses (size \c PARAM_K).
+ * @param[in]  a   Input elements (size \c PARAM_K).
+ */
+static inline void batch_inverse(uint8_t *inv, const uint8_t *a) {
+    uint8_t prefix[PARAM_K];
+    uint8_t acc = 1;
+
+    for (size_t i = 0; i < PARAM_K; i++) {
+        uint8_t a_is_zero = is_zero(a[i]);
+        uint8_t safe_a = (uint8_t)(a[i] | a_is_zero);
+
+        prefix[i] = acc;
+        acc = gf_mul(acc, safe_a);
+    }
+
+    uint8_t inv_all = (uint8_t)gf_inverse(acc);
+    uint8_t suffix = 1;
+    for (size_t i = PARAM_K; i-- > 0;) {
+        uint8_t a_is_zero = is_zero(a[i]);
+        uint8_t safe_a = (uint8_t)(a[i] | a_is_zero);
+        uint8_t prod_except_i = gf_mul(prefix[i], suffix);
+        inv[i] = gf_mul(prod_except_i, inv_all);
+        suffix = gf_mul(suffix, safe_a);
+    }
+}
+
+/**
+ * @brief Compute error values on message positions and output the corrected message.
+ *
+ * This function computes the error magnitudes and applies corrections only for
+ * the message bytes, which are stored in the last PARAM_K bytes of the
+ * received Reed-Solomon codeword.
+ *  1) Compute the auxiliary polynomial Z(x) from \p syndromes and \p sigma.
+ *  2) Form the odd part \f$\sigma_{\text{odd}}(x)\f$ (formal derivative in GF(2^8)).
+ *  3) Evaluate Z and \f$\sigma_{\text{odd}}\f$ at all message points, batch-invert the
+ *     denominators, and compute error values for positions marked in
+ *     \p error_positions.
+ *  4) Correct the message bytes: \c message[i] = cdw_tail[i] XOR error_value[i].
+ *
+ * @param[out] message          Decoded message (size \c PARAM_K).
+ * @param[in]  cdw_bytes        Received codeword bytes (size \c PARAM_N1).
+ * @param[in]  syndromes        Syndromes \f$S_0..S_{2t-1}\f$ (low bytes used).
+ * @param[in]  sigma            Error-locator polynomial (size \c PARAM_T+1).
+ * @param[in]  error_positions  Message-only error flags (size \c PARAM_K, entries 0/1).
+ */
+static inline void correct_errors(uint8_t *message, const uint8_t *cdw_bytes, const uint16_t *syndromes,
+                                  const uint16_t *sigma, const uint8_t *error_positions) {
+    uint16_t z[PARAM_T + 1] = {0};
+#ifdef VERBOSE
+    uint8_t error_values[PARAM_K] = {0};
+#endif
+    z[0] = 1;
+
+    for (uint16_t i = 0; i < PARAM_T; ++i) {
+        z[i + 1] = syndromes[i];
+
+        for (uint16_t j = 0; j < i; ++j) {
+            uint16_t sj1 = sigma[j + 1];
+            uint16_t sj2 = syndromes[i - 1 - j];
+            z[i + 1] ^= gf_mul(sj1, sj2);
+        }
+
+        z[i + 1] ^= sigma[i + 1];
+    }
+
+    uint16_t sigma_odd[PARAM_T + 1] = {0};
+    for (uint16_t i = 1; i <= PARAM_T; i += 2) {
+        sigma_odd[i] = sigma[i];
+    }
+
+    uint8_t numerator_array[PARAM_K] = {0};
+    uint8_t denominator_array[PARAM_K] = {0};
+    evaluate_poly_at_all_msg_points(numerator_array, z);
+    evaluate_poly_at_all_msg_points(denominator_array, sigma_odd);
+
+    uint8_t inverse_denominator_array[PARAM_K] = {0};
+    batch_inverse(inverse_denominator_array, denominator_array);
+
+    for (size_t i = 0; i < PARAM_K; ++i) {
+        uint16_t has_error = make_nonzero_mask((uint16_t)error_positions[i]);
+        uint16_t den_nonzero = make_nonzero_mask((uint16_t)denominator_array[i]);
+        uint16_t valid = has_error & den_nonzero;
+
+        uint8_t mag = gf_mul(numerator_array[i], inverse_denominator_array[i]);
+        uint8_t corr = (uint8_t)(valid & mag);
+        message[i] = cdw_bytes[i + (PARAM_N1 - PARAM_K)] ^ corr;
+#ifdef VERBOSE
+        error_values[i] = corr;
+#endif
+    }
+
+#ifdef VERBOSE
+    printf("\n\nThe polynomial: Z(x) = ");
+    bool first_z = true;
+    for (size_t i = 0; i <= PARAM_T; ++i) {
+        uint16_t c = (uint16_t)(z[i] & 0xFF);
+        if (c == 0)
+            continue;
+
+        if (!first_z)
+            printf(" + ");
+        first_z = false;
+
+        if (i == 0) {
+            printf("%u", (unsigned)c);
+        } else {
+            if (c != 1)
+                printf("%u*", (unsigned)c);
+            if (i == 1)
+                printf("x");
+            else
+                printf("x^%zu", i);
+        }
+    }
+    if (first_z)
+        printf("0");
+
+    printf("\n\nError locations / magnitudes: ");
+    size_t n_err = 0;
+    for (size_t i = 0; i < PARAM_K; ++i) {
+        n_err += (error_positions[i] != 0);
+    }
+
+    if (n_err == 0) {
+        printf("none (no errors detected in message positions)\n");
+    } else {
+        printf("%zu error%s: ", n_err, (n_err == 1) ? "" : "s");
+        for (size_t i = 0; i < PARAM_K; ++i) {
+            if (error_positions[i]) {
+                size_t pos_cw = (size_t)(PARAM_N1 - PARAM_K) + i;
+                printf("(%zu, %u) ", pos_cw, (unsigned)error_values[i]);
+            }
+        }
+        printf("\nMessage indices: ");
+        for (size_t i = 0; i < PARAM_K; ++i) {
+            if (error_positions[i])
+                printf("%zu ", i);
+        }
+        printf("\n");
+    }
 #endif
 
-    // Zeroize sensitive data
+    memset_zero(z, sizeof z);
+    memset_zero(sigma_odd, sizeof sigma_odd);
+    memset_zero(numerator_array, sizeof numerator_array);
+    memset_zero(denominator_array, sizeof denominator_array);
+    memset_zero(inverse_denominator_array, sizeof inverse_denominator_array);
+}
+
+/**
+ * @brief Decode a Reed–Solomon codeword and recover the message (message-only correction).
+ *
+ * Steps:
+ *  1) Copy the received codeword (\p cdw) into a local byte buffer.
+ *  2) Compute the 2·PARAM_T syndromes.
+ *  3) Run Berlekamp–Massey to compute the error-locator polynomial σ(x).
+ *  4) Run Chien search over the message positions to get \p error_positions (0/1 flags).
+ *  5) Compute z(x), error values (Forney), and correct the message bytes.
+ *  6) Copy the corrected message to \p msg and zeroize temporary buffers.
+ *
+ * @param[out] msg Output message buffer (expects \c PARAM_K bytes).
+ * @param[in]  cdw Input codeword buffer (expects \c PARAM_N1 bytes).
+ */
+void reed_solomon_decode(uint64_t *msg, uint64_t *cdw) {
+    uint8_t cdw_bytes[PARAM_N1] = {0};
+    __m256i syndrome_vecs[SYND_VEC_COUNT];
+    uint16_t *syndromes = (uint16_t *)syndrome_vecs;
+    uint16_t sigma[PARAM_T + 1] = {0};
+    uint8_t error_positions[PARAM_K] = {0};
+    uint8_t message[PARAM_K] = {0};
+
+    memcpy(cdw_bytes, cdw, PARAM_N1);
+
+    compute_syndromes(syndrome_vecs, cdw_bytes);
+    compute_error_locator_polynomial(sigma, syndromes);
+    compute_error_positions(error_positions, sigma);
+    correct_errors(message, cdw_bytes, syndromes, sigma, error_positions);
+
+    memcpy(msg, message, PARAM_K);
+
     memset_zero(cdw_bytes, sizeof cdw_bytes);
+    memset_zero(syndrome_vecs, sizeof syndrome_vecs);
+    memset_zero(sigma, sizeof sigma);
+    memset_zero(error_positions, sizeof error_positions);
+    memset_zero(message, sizeof message);
 }

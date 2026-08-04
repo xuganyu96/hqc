@@ -107,9 +107,9 @@ The syndromes: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 
 The error locator polynomial: sigma(x) = 1
 
-The polynomial: z(x) = 1
+The polynomial: Z(x) = 1
 
-The pairs of (error locator numbers, error values): 
+Error locations / magnitudes: none (no errors detected in message positions)
 
 
 Reed-Muller decoding result (the input for the Reed-Solomon decoding algorithm): b0106b64f54f258667bcb9958a35ddd0c92190330761eca5afef2fbdea2fbdf038275e31dc525ab03b228162281523949760e5ffb7ea712442c81a9fbcbc8da36dff2abe203296170fdb97c3297f67fcb679ac719c9fd00253b0

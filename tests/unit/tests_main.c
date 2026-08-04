@@ -19,7 +19,8 @@ static MunitSuite nested_suites[] = {MUNIT_LEAF_ONCE("galois field", gf_tests),
 #ifdef HQC_HAVE_NTL
                                      MUNIT_LEAF_ONCE("gf2x", gf2x_ntl_tests),
 #endif
-                                     MUNIT_SUITE_END};
+
+                                     MUNIT_LEAF_ONCE("gf", gf_tests), MUNIT_SUITE_END};
 
 static MunitSuite main_suite = MUNIT_TOP_SUITE("unit", nested_suites);
 

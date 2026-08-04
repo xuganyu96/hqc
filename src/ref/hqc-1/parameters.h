@@ -41,13 +41,12 @@
 #define VEC_N_PKE_WORDS             VEC_N_SIZE_64               ///< Size of PKE u in 64-bit words
 #define VEC_N1N2_PKE_WORDS          VEC_N1N2_SIZE_64            ///< Size of PKE v in 64-bit words
 
-#define PARAM_DELTA                 15          ///< Define the error-correcting capacity (delta) of the Reed–Solomon code
+#define PARAM_T                 15          ///< Define the error-correcting capacity (t) of the Reed–Solomon code
 #define PARAM_M                     8           ///< Define the degree m of the Galois field GF(2^m)
 #define PARAM_GF_POLY               0x11B       ///< Generator polynomial of GF(2^PARAM_M) in hexadecimal form
 #define PARAM_GF_MUL_ORDER          255         ///< Size of the multiplicative group of GF(2^PARAM_M) (2^PARAM_M−1)
 #define PARAM_K                     16          ///< Define the size of the information bits of the Reed–Solomon code
 #define PARAM_G                     31          ///< Define the size of the generator polynomial of the Reed–Solomon code
-#define PARAM_FFT                   4           ///< Exponent for additive FFT (2^PARAM_FFT points)
 
 #define RS_POLY_COEFS \
     74, 81, 224, 114, 221, 115, 110, 88, 91, 151, 139, 151, 84, 184, 21, 242, \
