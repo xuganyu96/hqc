@@ -37,16 +37,15 @@ static inline int32_t find_peaks(rm_expanded_cdw128_t *transform);
 /**
  * @brief Encode a single byte into a single codeword using RM(1,7)
  *
- * Encoding matrix of this code:
- * bit pattern (note that bits are numbered big endian)
- * 0   aaaaaaaa aaaaaaaa aaaaaaaa aaaaaaaa
- * 1   cccccccc cccccccc cccccccc cccccccc
- * 2   f0f0f0f0 f0f0f0f0 f0f0f0f0 f0f0f0f0
- * 3   ff00ff00 ff00ff00 ff00ff00 ff00ff00
- * 4   ffff0000 ffff0000 ffff0000 ffff0000
- * 5   00000000 ffffffff 00000000 ffffffff
- * 6   00000000 00000000 ffffffff ffffffff
- * 7   ffffffff ffffffff ffffffff ffffffff
+ * Generator matrix of this code:
+ *     ffffffff ffffffff ffffffff ffffffff
+ *     00000000 00000000 ffffffff ffffffff
+ *     00000000 ffffffff 00000000 ffffffff
+ *     ffff0000 ffff0000 ffff0000 ffff0000
+ *     ff00ff00 ff00ff00 ff00ff00 ff00ff00
+ *     0f0f0f0f 0f0f0f0f 0f0f0f0f 0f0f0f0f
+ *     33333333 33333333 33333333 33333333
+ *     55555555 55555555 55555555 55555555
  *
  * @param[out] word An RM(1,7) codeword
  * @param[in] message A message to encode
@@ -54,9 +53,9 @@ static inline int32_t find_peaks(rm_expanded_cdw128_t *transform);
 inline void encode(rm_codeword128_t *word, int32_t message) {
     int32_t first_word;
     first_word = BIT0MASK(message >> 7);
-    first_word ^= BIT0MASK(message >> 0) & 0xaaaaaaaa;
-    first_word ^= BIT0MASK(message >> 1) & 0xcccccccc;
-    first_word ^= BIT0MASK(message >> 2) & 0xf0f0f0f0;
+    first_word ^= BIT0MASK(message >> 0) & 0x55555555;
+    first_word ^= BIT0MASK(message >> 1) & 0x33333333;
+    first_word ^= BIT0MASK(message >> 2) & 0x0f0f0f0f;
     first_word ^= BIT0MASK(message >> 3) & 0xff00ff00;
     first_word ^= BIT0MASK(message >> 4) & 0xffff0000;
     word->u32[0] = first_word;
@@ -85,14 +84,14 @@ inline void expand_and_sum(rm_expanded_cdw128_t *dst, rm_codeword128_t src[]) {
     // start converting the first copy
     for (size_t part = 0; part < 8; part++) {
         for (size_t i = 0; i < 16; ++i) {
-            dst->i16[(part << 4) + i] = src->u16[part] >> i & 1;
+            dst->i16[(part << 4) + i] = src->u16[part] >> (i ^ 7) & 1;
         }
     }
     // sum the rest of the copies
     for (size_t copy = 1; copy < MULTIPLICITY; copy++) {
         for (size_t part = 0; part < 8; part++) {
             for (size_t i = 0; i < 16; ++i) {
-                dst->i16[(part << 4) + i] += src[copy].u16[part] >> i & 1;
+                dst->i16[(part << 4) + i] += src[copy].u16[part] >> (i ^ 7) & 1;
             }
         }
     }
