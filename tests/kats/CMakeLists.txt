@@ -5,8 +5,15 @@ if(NOT DEFINED HQC_ARCH)
     message(FATAL_ERROR "HQC_ARCH must be set (ref or x86_64)")
 endif()
 
+find_package(OpenSSL REQUIRED)
+
 set(TEST_OUTPUT_DIR "${CMAKE_BINARY_DIR}/test_outputs")
 file(MAKE_DIRECTORY "${TEST_OUTPUT_DIR}")
+
+set(NIST_RNG_SRC "${CMAKE_SOURCE_DIR}/lib/nist-rng/rng.c")
+set_source_files_properties(${NIST_RNG_SRC} PROPERTIES
+        COMPILE_OPTIONS "-Wno-error=sign-compare;-Wno-sign-compare"
+)
 
 if(HQC_ARCH STREQUAL "x86_64")
     set(IMPL_DIR       "${CMAKE_SOURCE_DIR}/src/${HQC_ARCH}/${HQC_X86_IMPL}")
@@ -37,15 +44,38 @@ foreach(variant IN LISTS VARIANTS)
         get_filename_component(name ${src} NAME_WE)
         set(exe "${name}_${safe_var}")
 
-        add_executable(${exe} ${src})
+        file(GLOB COMMON_SRCS
+                "${CMAKE_SOURCE_DIR}/src/common/*.c"
+                "${CMAKE_SOURCE_DIR}/src/common/*/*.c"
+        )
+        list(FILTER COMMON_SRCS EXCLUDE REGEX ".*/randombytes\\.c$")
+        list(APPEND COMMON_SRCS "${NIST_RNG_SRC}")
+
+        file(GLOB IMPL_SRCS
+                "${IMPL_DIR}/*.c"
+        )
+        file(GLOB ARCH_COMMON_SRCS
+                "${ARCH_COMMON_DIR}/*.c"
+                "${ARCH_COMMON_DIR}/${variant}/*.c"
+        )
+        file(GLOB VARIANT_SRCS
+                "${IMPL_DIR}/${variant}/*.c"
+                "${IMPL_DIR}/${variant}/*/*.c"
+        )
+
+        add_executable(${exe}
+                ${src}
+                ${COMMON_SRCS}
+                ${ARCH_COMMON_SRCS}
+                ${IMPL_SRCS}
+                ${VARIANT_SRCS}
+        )
         target_compile_options(${exe} PRIVATE
                 -Wno-unused-result
                 -Wno-error=unused-result
+                -Wno-missing-prototypes
         )
-        target_link_libraries(${exe} PRIVATE
-                ${safe_var}_${HQC_ARCH}
-                fips202
-        )
+        target_link_libraries(${exe} PRIVATE fips202 OpenSSL::Crypto)
         target_compile_definitions(${exe} PRIVATE
                 $<$<STREQUAL:${HQC_ARCH},ref>:REF_MODE>
                 $<$<AND:$<STREQUAL:${HQC_ARCH},x86_64>,$<STREQUAL:${HQC_X86_IMPL},avx256>>:AVX2_MODE>
@@ -56,6 +86,7 @@ foreach(variant IN LISTS VARIANTS)
                 ${CMAKE_SOURCE_DIR}/src/common/${variant}
                 ${ARCH_COMMON_DIR}
                 ${ARCH_COMMON_DIR}/${variant}
+                ${IMPL_DIR}
                 ${IMPL_DIR}/${variant}
                 ${CMAKE_SOURCE_DIR}/lib/fips202
                 ${CMAKE_SOURCE_DIR}/lib/nist-rng
@@ -87,6 +118,8 @@ foreach(variant IN LISTS VARIANTS)
                 "${CMAKE_SOURCE_DIR}/src/common/*.c"
                 "${CMAKE_SOURCE_DIR}/src/common/*/*.c"
         )
+        list(FILTER COMMON_SRCS EXCLUDE REGEX ".*/randombytes\\.c$")
+        list(APPEND COMMON_SRCS "${NIST_RNG_SRC}")
 
         file(GLOB IMPL_SRCS
                 "${IMPL_DIR}/*.c"
@@ -130,6 +163,7 @@ foreach(variant IN LISTS VARIANTS)
         )
         target_link_libraries(${exe} PRIVATE
                 fips202
+                OpenSSL::Crypto
         )
 
         set(GOLD_FILE_IMD

@@ -1,23 +1,23 @@
 #define _DEFAULT_SOURCE
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include "api.h"
-#include "parameters.h"
-#include "symmetric.h"
 #include "crypto_memset.h"
+#include "hqc-kem.h"
+#include "parameters.h"
+#include "rng.h"
 
 static void init_randomness(void) {
-
 #ifdef VERBOSE
     unsigned char entropy_input[48] = {0};
     for (int i = 0; i < 48; i++) entropy_input[i] = (unsigned char)i;
-    prng_init(entropy_input, NULL, sizeof entropy_input, 0);
+    randombytes_init(entropy_input, NULL, 256);
 #else
-    unsigned char seed[32] = {0};
+    unsigned char seed[48] = {0};
     size_t filled = 0;
     while (filled < sizeof seed) {
         ssize_t got = syscall(SYS_getrandom, seed + filled, sizeof seed - filled, 0);
@@ -27,12 +27,11 @@ static void init_randomness(void) {
         }
         filled += (size_t)got;
     }
-    prng_init(seed, NULL, sizeof seed, 0);
+    randombytes_init(seed, NULL, 256);
 #endif
 }
 
 int main(void) {
-
     init_randomness();
 
 #ifdef VERBOSE
@@ -50,21 +49,21 @@ int main(void) {
     printf("\n");
 #endif
 
-    unsigned char pk[PUBLIC_KEY_BYTES] = {0};
-    unsigned char sk[SECRET_KEY_BYTES] = {0};
-    unsigned char ct[CIPHERTEXT_BYTES] = {0};
-    unsigned char key1[SHARED_SECRET_BYTES] = {0};
-    unsigned char key2[SHARED_SECRET_BYTES] = {0};
+    uint8_t pk[PUBLIC_KEY_BYTES_KEM] = {0};
+    uint8_t sk[SECRET_KEY_BYTES_KEM] = {0};
+    uint8_t ct[CIPHERTEXT_BYTES_KEM] = {0};
+    uint8_t key1[SHARED_SECRET_BYTES_KEM] = {0};
+    uint8_t key2[SHARED_SECRET_BYTES_KEM] = {0};
 
-    crypto_kem_keypair(pk, sk);
-    crypto_kem_enc(ct, key1, pk);
-    crypto_kem_dec(key2, ct, sk);
+    hqc_kem_keygen(pk, sk);
+    hqc_kem_encaps(ct, key1, pk);
+    hqc_kem_decaps(key2, sk, ct);
 
     printf("\n\nsecret1: ");
-    for (int i = 0; i < SHARED_SECRET_BYTES; ++i) printf("%02x", key1[i]);
+    for (size_t i = 0; i < SHARED_SECRET_BYTES_KEM; ++i) printf("%02x", key1[i]);
 
     printf("\nsecret2: ");
-    for (int i = 0; i < SHARED_SECRET_BYTES; ++i) printf("%02x", key2[i]);
+    for (size_t i = 0; i < SHARED_SECRET_BYTES_KEM; ++i) printf("%02x", key2[i]);
     printf("\n\n");
 
     // Zeroize sensitive data

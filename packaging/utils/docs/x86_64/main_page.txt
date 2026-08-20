@@ -28,7 +28,7 @@
  *
  * @subsection requirements 2.1 Requirements
  *
- * The following software and libraries are required: **make** and **gcc**. The target machine must support <b>AVX2</b> instructions.
+ * The following software and libraries are required: **make**, **gcc**, and **OpenSSL** (**libcrypto**). The target machine must support <b>AVX2</b> instructions.
  *
  * @subsection compilation 2.2 Compilation Step
  *
@@ -54,11 +54,11 @@
  * - **gf.o**: Functions for Galois field manipulation.
  * - **gf2x.o**: Implementation of polynomial multiplication.
  * - **hqc.o**: The HQC PKE IND-CPA scheme.
- * - **kem.o**: The HQC KEM IND-CCA2 scheme.
+ * - **hqc-kem.o**: The HQC KEM IND-CCA2 scheme.
  * - **parsing.o**: Functions to parse public key, secret key, and ciphertext.
  * - **reed_muller.o**: Functions to encode/decode messages using Reed-Muller codes.
  * - **reed_solomon.o**: Functions to encode/decode messages using Reed-Solomon codes.
- * - **symmetric.o**: Functions for PRNG, XOF, and hash functions.
+ * - **symmetric.o**: Functions for XOF and hash functions.
  * - **vector.o**: Functions to manipulate vectors.
  *
  * @section documentation 3. DOCUMENTATION
@@ -76,8 +76,8 @@
  *
  * @subsection impl_overview 4.1 Implementation overview - HQC
  *
- * The **HQC-KEM IND-CCA2** scheme is specified in **api.h** and
- * **parameters.h**, and implemented in **kem.c**. It is built upon the
+ * The **HQC-KEM IND-CCA2** scheme is specified in **hqc-kem.h** and
+ * **parameters.h**, and implemented in **hqc-kem.c**. It is built upon the
  * **HQC-PKE IND-CPA** scheme, which is defined in **hqc.h** and implemented
  * in **hqc.c**.
  *
@@ -94,10 +94,11 @@
  * represented both as mathematical objects and as bit strings, the files
  * **parsing.h** and **parsing.c** contain functions for serialization and deserialization.
  *
- * Randomness and hashing primitives are in **symmetric.h** and **symmetric.c**, which
- * implement a **SHAKE-256** based **PRNG**, an **XOF**, and hash functions
- * based on **SHA3-256** and **SHA3-512**. Finally, **fips202.h** and **fips202.c**
- * (in **lib/fips202/**) contain a standalone SHA3 implementation.
+ * Hashing primitives are in **symmetric.h** and **symmetric.c**, which implement a
+ * **SHAKE-256** **XOF** and hash functions based on **SHA3-256** and **SHA3-512**.
+ * Randomness is provided by the NIST RNG in **lib/nist-rng/** (**rng.h** and **rng.c**).
+ * Finally, **fips202.h** and **fips202.c** (in **lib/fips202/**) contain a standalone
+ * SHA3 implementation.
  *
  * @subsection kem_keys 4.2 Encapsulation key, decapsulation key, ciphertext, and shared secret
  *
@@ -105,10 +106,10 @@
  * ciphertext **c_kem** are composed as follows:
  *
  * - **ek_kem = (h, s)**
- * - **dk_kem = ((h, s), y, sigma, seed_kem)**
+ * - **dk_kem = (ek_kem, dk_pke, z, d)**
  * - **c_kem = ((u, v), salt)**
  *
- * where **seed_kem** is the master seed of the KEM.
+ * where **z** is the implicit rejection value and **d** is the PKE key generation seed.
  *
  * The shared secret is derived by:
  * 1. Hashing **ek_kem** with **SHA3-256**.
@@ -119,7 +120,7 @@
  * To reduce key sizes:
  * - **ek_kem** is compressed as (**seed_ek, s**),
  *   where **seed_ek** is the PKE encryption key seed (used to generate **h**).
- * - **dk_kem** is stored as (**ek_kem, dk_pke, sigma, seed_kem**),
- *   where **dk_pke** is the seed used to generate **y**.
+ * - **dk_kem** is stored as (**ek_kem, dk_pke, z, d**),
+ *   where **dk_pke** is the seed used to generate **y** and **d** is the PKE key generation seed.
  *
  */

@@ -6,7 +6,7 @@
 #ifndef HQC_PARAMETERS_H
 #define HQC_PARAMETERS_H
 
-#include "api.h"
+#include "hqc-kem.h"
 
 #define CEIL_DIVIDE(a, b) (((a) / (b)) + ((a) % (b) == 0 ? 0 : 1)) /*!< Divide a by b and ceil the result*/
 #define BITMASK(a, size)  ((1UL << (a % size)) - 1)                /*!< Create a mask*/
@@ -22,10 +22,13 @@
 #define PARAM_SECURITY_BYTES        16          ///< Define the security level in bytes
 #define PARAM_DFR_EXP               128         ///< Define the decryption failure rate exponent
 
-#define SECRET_KEY_BYTES            CRYPTO_SECRETKEYBYTES   ///< Define the size of the secret key in bytes
-#define PUBLIC_KEY_BYTES            CRYPTO_PUBLICKEYBYTES   ///< Define the size of the public key in bytes
-#define SHARED_SECRET_BYTES         CRYPTO_BYTES            ///< Define the size of the shared secret in bytes
-#define CIPHERTEXT_BYTES            CRYPTO_CIPHERTEXTBYTES  ///< Define the size of the ciphertext in bytes
+#define SECRET_KEY_BYTES_KEM        CRYPTO_SECRETKEYBYTES   ///< Define the size of the KEM secret key in bytes
+#define PUBLIC_KEY_BYTES_KEM        CRYPTO_PUBLICKEYBYTES   ///< Define the size of the KEM public key in bytes
+#define SHARED_SECRET_BYTES_KEM     CRYPTO_BYTES            ///< Define the size of the shared secret in bytes
+#define CIPHERTEXT_BYTES_KEM        CRYPTO_CIPHERTEXTBYTES  ///< Define the size of the ciphertext in bytes
+
+#define SECRET_KEY_BYTES_PKE        SEED_BYTES                       ///< Define the size of the PKE secret key in bytes
+#define PUBLIC_KEY_BYTES_PKE        (SEED_BYTES + VEC_N_SIZE_BYTES)  ///< Define the size of the PKE public key in bytes
 
 #define VEC_N_SIZE_BYTES            CEIL_DIVIDE(PARAM_N, 8)     ///< Size of array to store PARAM_N bits in bytes
 #define VEC_K_SIZE_BYTES            PARAM_K                     ///< Size of array to store PARAM_K bits in bytes
@@ -35,6 +38,8 @@
 #define VEC_N_SIZE_64               CEIL_DIVIDE(PARAM_N, 64)    ///< Size of array to store PARAM_N bits in 64-bit words
 #define VEC_N1_SIZE_64              CEIL_DIVIDE(PARAM_N1, 8)    ///< Size of array to store PARAM_N1 bits in 64-bit words
 #define VEC_N1N2_SIZE_64            CEIL_DIVIDE(PARAM_N1N2, 64) ///< Size of array to store PARAM_N1N2 bits in 64-bit words
+#define VEC_N_PKE_WORDS             VEC_N_SIZE_64               ///< Size of PKE u in 64-bit words
+#define VEC_N1N2_PKE_WORDS          VEC_N1N2_SIZE_64            ///< Size of PKE v in 64-bit words
 
 #define PARAM_DELTA                 15          ///< Define the error-correcting capacity (delta) of the Reed–Solomon code
 #define PARAM_M                     8           ///< Define the degree m of the Galois field GF(2^m)
@@ -52,6 +57,6 @@
 #define SALT_BYTES                  16          ///< Define the size of a salt in bytes
 
 #define PARAM_N_MU 243079ULL   ///<  Define a precomputed multiplier for Barrett reduction mu = floor(2^32 / PARAM_N)
-#define UTILS_REJECTION_THRESHOLD             16767881  ///< Rejection threshold for uniform sampling in [0, PARAM_N)
+#define UTILS_REJECTION_THRESHOLD   16767881  ///< Rejection threshold for uniform sampling in [0, PARAM_N)
 
 #endif // HQC_PARAMETERS_H

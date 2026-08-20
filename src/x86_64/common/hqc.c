@@ -91,21 +91,23 @@ void hqc_pke_keygen(uint8_t *ek_pke, uint8_t *dk_pke, uint8_t *seed) {
     memset_zero(y, sizeof y);
     memset_zero(tmp, sizeof tmp);
     memset_zero(&dk_xof_ctx, sizeof dk_xof_ctx);
+    memset_zero(&ek_xof_ctx, sizeof ek_xof_ctx);
 }
 
 /**
  * @brief Encrypts a message using the HQC public-key encryption (PKE) scheme.
  *
  * This function performs encryption in the HQC PKE scheme. It uses the given encryption key (`ek_pke`)
- * and encryption randomness (`theta`) to encrypt the message `m`, producing a ciphertext `c_pke`.
+ * and encryption randomness (`theta`) to encrypt the message `m`, producing ciphertext vectors `u` and `v`.
  *
- * @param[out] c_pke     Pointer to the output ciphertext structure (PKE ciphertext).
+ * @param[out] u         Pointer to the output ciphertext u vector.
+ * @param[out] v         Pointer to the output ciphertext v vector.
  * @param[in]  ek_pke    Pointer to the encryption key.
  * @param[in]  m         Pointer to the message to be encrypted.
  * @param[in]  theta     Pointer to the encryption randomness used during encryption.
  *
  */
-void hqc_pke_encrypt(ciphertext_pke_t *c_pke, const uint8_t *ek_pke, const uint64_t *m, const uint8_t *theta) {
+void hqc_pke_encrypt(uint64_t *u, uint64_t *v, const uint8_t *ek_pke, const uint64_t *m, const uint8_t *theta) {
     shake256_xof_ctx theta_xof_ctx = {0};
     static __m256i h[VEC_N_256_NUM_WORDS];
     static __m256i s[VEC_N_256_NUM_WORDS];
@@ -143,16 +145,16 @@ void hqc_pke_encrypt(ciphertext_pke_t *c_pke, const uint8_t *ek_pke, const uint6
 
     // Compute u = r1 + r2.h
     vect_mul(tmp1, r2, h);
-    vect_add(c_pke->u, (uint64_t *)r1, (uint64_t *)tmp1, VEC_N_256_SIZE_64);
+    vect_add(u, (uint64_t *)r1, (uint64_t *)tmp1, VEC_N_256_SIZE_64);
 
     // Compute v = C.encode(m)
-    code_encode(c_pke->v, m);
+    code_encode(v, m);
 
     // Compute v = C.encode(m) + Truncate(s.r2 + e)
     vect_mul(tmp2, r2, s);
     vect_add(tmp3, (uint64_t *)e, (uint64_t *)tmp2, VEC_N_256_SIZE_64);
     vect_truncate(tmp3);
-    vect_add(c_pke->v, c_pke->v, tmp3, VEC_N1N2_SIZE_64);
+    vect_add(v, v, tmp3, VEC_N1N2_SIZE_64);
 
 #ifdef VERBOSE
     printf("\n\nh: ");
@@ -167,10 +169,10 @@ void hqc_pke_encrypt(ciphertext_pke_t *c_pke, const uint8_t *ek_pke, const uint6
     vect_print((uint64_t *)e, VEC_N_SIZE_BYTES);
     printf("\n\nTruncate(s.r2 + e): ");
     vect_print(tmp3, VEC_N1N2_SIZE_BYTES);
-    printf("\n\nc_pke->u: ");
-    vect_print(c_pke->u, VEC_N_SIZE_BYTES);
-    printf("\n\nc_pke->v: ");
-    vect_print(c_pke->v, VEC_N1N2_SIZE_BYTES);
+    printf("\n\nu: ");
+    vect_print(u, VEC_N_SIZE_BYTES);
+    printf("\n\nv: ");
+    vect_print(v, VEC_N1N2_SIZE_BYTES);
 #endif
 
     // Zeroize sensitive data
@@ -187,48 +189,49 @@ void hqc_pke_encrypt(ciphertext_pke_t *c_pke, const uint8_t *ek_pke, const uint6
  * @brief Decrypts a ciphertext using the HQC public-key encryption (PKE) scheme.
  *
  * This function performs decryption in the HQC PKE scheme. It uses the given decryption key (`dk_pke`)
- * to decrypt the ciphertext `c_pke`, recovering the original message `m`.
+ * to decrypt ciphertext vectors `u` and `v`, recovering the original message `m`.
  *
  * @param[out] m         Pointer to the output buffer where the decrypted message will be stored.
  * @param[in]  dk_pke    Pointer to the decryption key.
- * @param[in]  c_pke     Pointer to the input ciphertext structure (PKE ciphertext).
+ * @param[in]  u         Pointer to the input ciphertext u vector.
+ * @param[in]  v         Pointer to the input ciphertext v vector.
  *
  * @return Returns 0 on success.
  *
  */
-uint8_t hqc_pke_decrypt(uint64_t *m, const uint8_t *dk_pke, const ciphertext_pke_t *c_pke) {
+uint8_t hqc_pke_decrypt(uint64_t *m, const uint8_t *dk_pke, const uint64_t *u, const uint64_t *v) {
     static __m256i y[VEC_N_256_NUM_WORDS] = {0};
-    __m256i u[VEC_N_256_NUM_WORDS] = {0};
+    __m256i u_vec[VEC_N_256_NUM_WORDS] = {0};
     static __m256i tmp1[VEC_N_256_NUM_WORDS];
     static uint64_t tmp2[VEC_N_256_SIZE_64] = {0};
 
 #ifdef __STDC_LIB_EXT1__
     memset_s(y, 0, (VEC_N_256_NUM_WORDS) * sizeof(__m256i));
-    memset_s(u, 0, (VEC_N_256_NUM_WORDS) * sizeof(__m256i));
+    memset_s(u_vec, 0, (VEC_N_256_NUM_WORDS) * sizeof(__m256i));
 #else
     memset(y, 0, (VEC_N_256_NUM_WORDS) * sizeof(__m256i));
-    memset(u, 0, (VEC_N_256_NUM_WORDS) * sizeof(__m256i));
+    memset(u_vec, 0, (VEC_N_256_NUM_WORDS) * sizeof(__m256i));
 #endif
 
     for (size_t i = 0; i < (VEC_N_256_NUM_WORDS); ++i) {
-        u[i] = _mm256_set_epi64x(c_pke->u[i * 4 + 3], c_pke->u[i * 4 + 2], c_pke->u[i * 4 + 1], c_pke->u[i * 4 + 0]);
+        u_vec[i] = _mm256_set_epi64x(u[i * 4 + 3], u[i * 4 + 2], u[i * 4 + 1], u[i * 4 + 0]);
     }
 
     // Parse decryption key dk_pke
     hqc_dk_pke_from_string(y, dk_pke);
 
     // Compute u.y
-    vect_mul(tmp1, y, u);
+    vect_mul(tmp1, y, u_vec);
     // Truncate(u.y)
     vect_truncate((uint64_t *)tmp1);
     // Compute v - Truncate(u.y)
-    vect_add(tmp2, c_pke->v, (uint64_t *)tmp1, VEC_N1N2_SIZE_64);
+    vect_add(tmp2, v, (uint64_t *)tmp1, VEC_N1N2_SIZE_64);
 
 #ifdef VERBOSE
-    printf("\n\nc_pke.u: ");
-    vect_print((uint64_t *)c_pke->u, VEC_N_SIZE_BYTES);
-    printf("\n\nc_pke.v: ");
-    vect_print(c_pke->v, VEC_N1N2_SIZE_BYTES);
+    printf("\n\nu: ");
+    vect_print(u, VEC_N_SIZE_BYTES);
+    printf("\n\nv: ");
+    vect_print(v, VEC_N1N2_SIZE_BYTES);
     printf("\n\ny: ");
     vect_print((uint64_t *)y, VEC_N_SIZE_BYTES);
     printf("\n\nTruncate(u.y): ");

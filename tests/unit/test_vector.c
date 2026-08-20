@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "crypto_memset.h"
 #include "munit_utils.h"
 #include "parameters.h"
 #include "symmetric.h"
@@ -155,6 +156,7 @@ static MunitResult test_vect_fixed_weight_ref_omega(const MunitParameter params[
         vect_sample_fixed_weight1(&ctx, v, PARAM_OMEGA);
 
         munit_assert_uint32(hamming_weight_u64(v, VEC_N_SIZE_64), ==, PARAM_OMEGA);
+        memset_zero(&ctx, sizeof ctx);
     }
     return MUNIT_OK;
 }
@@ -177,6 +179,7 @@ static MunitResult test_vect_fixed_weight_ref_omegar(const MunitParameter params
         vect_sample_fixed_weight2(&ctx, v, PARAM_OMEGA_R);
 
         munit_assert_uint32(hamming_weight_u64(v, VEC_N_SIZE_64), ==, PARAM_OMEGA_R);
+        memset_zero(&ctx, sizeof ctx);
     }
     return MUNIT_OK;
 }
@@ -209,6 +212,7 @@ static MunitResult test_vect_fixed_weight_avx2_omega(const MunitParameter params
         vect_sample_fixed_weight1(&ctx, v256, PARAM_OMEGA);
 
         munit_assert_uint32(hamming_weight_u64((const uint64_t *)v256, VEC_N_SIZE_64), ==, PARAM_OMEGA);
+        memset_zero(&ctx, sizeof ctx);
     }
     return MUNIT_OK;
 }
@@ -236,6 +240,7 @@ static MunitResult test_vect_fixed_weight_avx2_omegar(const MunitParameter param
         vect_sample_fixed_weight2(&ctx, v256, PARAM_OMEGA_R);
 
         munit_assert_uint32(hamming_weight_u64((const uint64_t *)v256, VEC_N_SIZE_64), ==, PARAM_OMEGA_R);
+        memset_zero(&ctx, sizeof ctx);
     }
     return MUNIT_OK;
 }

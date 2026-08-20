@@ -6,6 +6,7 @@ file(GLOB API_TEST_SRCS
 )
 
 set(API_MAIN_SRC "${CMAKE_CURRENT_SOURCE_DIR}/tests_main.c")
+set(TEST_RANDOMBYTES_SRC "${CMAKE_SOURCE_DIR}/tests/common/randombytes.c")
 
 foreach(variant IN LISTS VARIANTS)
     string(REPLACE "-" "_" safe_var ${variant})
@@ -14,6 +15,7 @@ foreach(variant IN LISTS VARIANTS)
     add_executable(${exe}
             ${API_MAIN_SRC}
             ${API_TEST_SRCS}
+            ${TEST_RANDOMBYTES_SRC}
     )
 
     target_link_libraries(${exe} PRIVATE

@@ -9,8 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "api.h"
-#include "symmetric.h"
+#include "hqc-kem.h"
+#include "rng.h"
 
 #define MAX_MARKER_LEN      50
 #define KAT_SUCCESS         0
@@ -51,10 +51,12 @@ int main(void) {
 
     for (int i = 0; i < 48; i++) entropy_input[i] = i;
 
-    prng_init(entropy_input, NULL, 48, 0);
+    randombytes_init(entropy_input, NULL, 256);
     for (int i = 0; i < 100; i++) {
         fprintf(fp_req, "count = %d\n", i);
-        prng_get_bytes(seed, 48);
+        if (randombytes(seed, 48) != RNG_SUCCESS) {
+            return KAT_CRYPTO_FAILURE;
+        }
         fprintBstr(fp_req, "seed = ", seed, 48);
         fprintf(fp_req, "pk =\n");
         fprintf(fp_req, "sk =\n");
@@ -86,18 +88,18 @@ int main(void) {
         }
         fprintBstr(fp_rsp, "seed = ", seed, 48);
 
-        prng_init(seed, NULL, 48, 0);
+        randombytes_init(seed, NULL, 256);
 
         // Generate the public/private keypair
-        if ((ret_val = crypto_kem_keypair(pk, sk)) != 0) {
-            printf("crypto_kem_keypair returned <%d>\n", ret_val);
+        if ((ret_val = hqc_kem_keygen(pk, sk)) != 0) {
+            printf("hqc_kem_keygen returned <%d>\n", ret_val);
             return KAT_CRYPTO_FAILURE;
         }
         fprintBstr(fp_rsp, "pk = ", pk, CRYPTO_PUBLICKEYBYTES);
         fprintBstr(fp_rsp, "sk = ", sk, CRYPTO_SECRETKEYBYTES);
 
-        if ((ret_val = crypto_kem_enc(ct, ss, pk)) != 0) {
-            printf("crypto_kem_enc returned <%d>\n", ret_val);
+        if ((ret_val = hqc_kem_encaps(ct, ss, pk)) != 0) {
+            printf("hqc_kem_encaps returned <%d>\n", ret_val);
             return KAT_CRYPTO_FAILURE;
         }
         fprintBstr(fp_rsp, "ct = ", ct, CRYPTO_CIPHERTEXTBYTES);
@@ -105,13 +107,13 @@ int main(void) {
 
         fprintf(fp_rsp, "\n");
 
-        if ((ret_val = crypto_kem_dec(ss1, ct, sk)) != 0) {
-            printf("crypto_kem_dec returned <%d>\n", ret_val);
+        if ((ret_val = hqc_kem_decaps(ss1, sk, ct)) != 0) {
+            printf("hqc_kem_decaps returned <%d>\n", ret_val);
             return KAT_CRYPTO_FAILURE;
         }
 
         if (memcmp(ss, ss1, CRYPTO_BYTES)) {
-            printf("crypto_kem_dec returned bad 'ss' value\n");
+            printf("hqc_kem_decaps returned bad 'ss' value\n");
             return KAT_CRYPTO_FAILURE;
         }
 

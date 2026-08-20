@@ -4,6 +4,7 @@ include(CTest)
 file(GLOB BENCH_SRCS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmark_*.c"
 )
+set(TEST_RANDOMBYTES_SRC "${CMAKE_SOURCE_DIR}/tests/common/randombytes.c")
 
 foreach(variant IN LISTS VARIANTS)
     string(REPLACE "-" "_" safe_var ${variant})
@@ -12,7 +13,7 @@ foreach(variant IN LISTS VARIANTS)
         get_filename_component(name ${src} NAME_WE)
         set(exe "${name}_${safe_var}")
 
-        add_executable(${exe} ${src})
+        add_executable(${exe} ${src} ${TEST_RANDOMBYTES_SRC})
         target_link_libraries(${exe} PRIVATE
                 ${safe_var}_${HQC_ARCH}
                 fips202

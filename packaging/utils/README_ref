@@ -32,7 +32,7 @@ documentation. Each parameter set folder is organized as follows:
 
 2.1 Requirements
 
-The following software and libraries are required: make and gcc.
+The following software and libraries are required: make, gcc, and OpenSSL (libcrypto).
 
 2.2 Compilation Step
 
@@ -51,11 +51,11 @@ During compilation, the following files are created inside the bin/build folder:
 - gf.o: Functions for Galois field manipulation.
 - gf2x.o: Implementation of function that multiply polynomials.
 - hqc.o: The HQC PKE IND-CPA scheme (either in normal mode or verbose mode).
-- kem.o: The HQC KEM IND-CCA2 scheme (either in normal mode or verbose mode).
+- hqc-kem.o: The HQC KEM IND-CCA2 scheme (either in normal mode or verbose mode).
 - parsing.o: Functions to parse public key, secret key and ciphertext of the scheme.
 - reed_muller.o: Functions to encode/decode messages using Reed-Muller codes.
 - reed_solomon.o: Functions to encode/decode messages using Reed-Solomon codes (either in normal mode or verbose mode).
-- symmetric.o: Functions for pseudo-random number generator, extendable-output function (XOF) and hash functions.
+- symmetric.o: Functions for extendable-output function (XOF) and hash functions.
 - vector.o: Functions to manipulate vectors.
 
 3. DOCUMENTATION
@@ -76,7 +76,7 @@ The following software are required: doxygen and bibtex.
 
 4.1 Implementation overview - HQC
 
-The HQC-KEM IND-CCA2 scheme is specified in the api.h and parameters.h files and implemented in kem.c. It is built upon
+The HQC-KEM IND-CCA2 scheme is specified in the hqc-kem.h and parameters.h files and implemented in hqc-kem.c. It is built upon
 the HQC-PKE IND-CPA scheme, which is defined in hqc.h and implemented in hqc.c.  The HQC-PKE scheme relies on
 concatenated codes (see code.h and code.c), combining Reed-Solomon codes (reed_solomon.h, reed_solomon.c) with
 Reed-Muller codes [6] (reed_muller.h, reed_muller.c). The roots computation required by the Reed-Solomon codes is
@@ -84,18 +84,18 @@ performed using an additive Fast Fourier Transform (FFT) [7][8], implemented in 
 field arithmetic is implemented in gf.h and gf.c. Polynomial multiplication is provided by gf2x.c and gf2x.h.  As
 encapsulation keys, decapsulations keys, and ciphertexts can be represented both as mathematical objects and as bit
 strings, the files parsing.h and parsing.c contain functions for serialization and deserialization between these
-formats.  Randomness and hashing primitives are provided in symmetric.h and symmetric.c, which implement a
-SHAKE-256–based pseudo-random number generator (PRNG), an extendable-output function (XOF), and hash functions based on
-SHA3-256 and SHA3-512. Finally, the files fips202.h and fips202.c (located in lib/fips202/) contain a standalone
-implementation of SHA3.
+formats.  Hashing primitives are provided in symmetric.h and symmetric.c, which implement a SHAKE-256 extendable-output
+function (XOF) and hash functions based on SHA3-256 and SHA3-512. Randomness is provided by the NIST RNG implementation
+in lib/nist-rng (rng.h and rng.c). Finally, the files fips202.h and fips202.c (located in lib/fips202/) contain a
+standalone implementation of SHA3.
 
 4.2 Encapsulation key, decapsulation key, ciphertext and shared secret
 
 The encapsulation key ek_kem, decapsulation key dk_kem, and ciphertext c_kem are composed as follows:
 - ek_kem = (h, s)
-- dk_kem = ((h, s), y, sigma, seed_kem)
+- dk_kem = (ek_kem, dk_pke, z, d)
 - c_kem = ((u, v), salt)
-where seed_kem denotes the master seed of the KEM.
+where z is the implicit rejection value and d is the PKE key generation seed.
 
 The shared secret is derived by first hashing the encapsulation key ek_kem with SHA3-256. The resulting digest is
  then concatenated with the message m and the salt, and the whole string is hashed again with SHA3-512. The first 32
@@ -103,7 +103,7 @@ The shared secret is derived by first hashing the encapsulation key ek_kem with 
 
 To reduce key sizes, the encapsulation key is compressed and stored as ek_kem = (seed_ek, s), where seed_ek is the seed
  of the PKE encryption key (used to generate h). The decapsulation key is stored as
- dk_kem = (ek_kem, dk_pke, sigma, seed_kem), where dk_PKE is the seed used to generate y.
+ dk_kem = (ek_kem, dk_pke, z, d), where dk_pke is the seed used to generate y and d is the PKE key generation seed.
 
 
 5. REFERENCES

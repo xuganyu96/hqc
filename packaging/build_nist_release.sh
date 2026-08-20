@@ -66,8 +66,8 @@ generate_impl() {
     # 1) common code
     cp "$REPO_ROOT/src/common/"*.c "$REPO_ROOT/src/common/"*.h "$DST/src/"
 
-    # 2) exactly one api.h for this VAR
-    cp "$REPO_ROOT/src/common/$VAR/api.h" "$DST/src/"
+    # 2) exactly one hqc-kem.h for this VAR
+    cp "$REPO_ROOT/src/common/$VAR/hqc-kem.h" "$DST/src/"
 
     if [ "$SRC_ARCH" = "ref" ]; then
       # reference: core + per-variant

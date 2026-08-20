@@ -3,12 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/syscall.h>
 #include <time.h>
-#include <unistd.h>
-#include "api.h"
+#include "hqc-kem.h"
 #include "parameters.h"
-#include "symmetric.h"
 
 #define NB_TEST    100
 #define NB_SAMPLES 1000
@@ -45,31 +42,33 @@ static inline uint64_t get_time_ns(void) {
     return (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 }
 
+extern int randombytes_init(void);
+
 int main(void) {
-    unsigned char pk[PUBLIC_KEY_BYTES];
-    unsigned char sk[SECRET_KEY_BYTES];
-    unsigned char ct[CIPHERTEXT_BYTES];
-    unsigned char ss1[SHARED_SECRET_BYTES];
-    unsigned char ss2[SHARED_SECRET_BYTES];
+    if (randombytes_init() != 0) {
+        return 1;
+    }
+
+    uint8_t pk[PUBLIC_KEY_BYTES_KEM];
+    uint8_t sk[SECRET_KEY_BYTES_KEM];
+    uint8_t ct[CIPHERTEXT_BYTES_KEM];
+    uint8_t ss1[SHARED_SECRET_BYTES_KEM];
+    uint8_t ss2[SHARED_SECRET_BYTES_KEM];
 
     uint64_t t1, t2, ns1, ns2;
     uint64_t keygen_cycles_total = 0, encaps_cycles_total = 0, decaps_cycles_total = 0;
     uint64_t keygen_ns_total = 0, encaps_ns_total = 0, decaps_ns_total = 0;
 
-    unsigned char seed[48] = {0};
-    syscall(SYS_getrandom, seed, 48, 0);
-    prng_init(seed, NULL, 48, 0);
-
     // warm-up
     for (size_t i = 0; i < NB_TEST; i++) {
-        crypto_kem_keypair(pk, sk);
+        hqc_kem_keygen(pk, sk);
     }
     for (size_t i = 0; i < NB_SAMPLES; i++) {
         uint64_t timer_c = 0, timer_ns = 0;
         for (size_t j = 0; j < NB_TEST; j++) {
             t1 = cpucyclesStart();
             ns1 = get_time_ns();
-            crypto_kem_keypair(pk, sk);
+            hqc_kem_keygen(pk, sk);
             ns2 = get_time_ns();
             t2 = cpucyclesStop();
 
@@ -82,14 +81,14 @@ int main(void) {
 
     // warm-up
     for (size_t i = 0; i < NB_TEST; i++) {
-        crypto_kem_enc(ct, ss1, pk);
+        hqc_kem_encaps(ct, ss1, pk);
     }
     for (size_t i = 0; i < NB_SAMPLES; i++) {
         uint64_t timer_c = 0, timer_ns = 0;
         for (size_t j = 0; j < NB_TEST; j++) {
             t1 = cpucyclesStart();
             ns1 = get_time_ns();
-            crypto_kem_enc(ct, ss1, pk);
+            hqc_kem_encaps(ct, ss1, pk);
             ns2 = get_time_ns();
             t2 = cpucyclesStop();
 
@@ -102,10 +101,10 @@ int main(void) {
 
     // warm-up
     for (size_t i = 0; i < NB_TEST; i++) {
-        crypto_kem_dec(ss2, ct, sk);
+        hqc_kem_decaps(ss2, sk, ct);
     }
     for (size_t i = 0; i < NB_SAMPLES; i++) {
-        if (memcmp(ss1, ss2, SHARED_SECRET_BYTES)) {
+        if (memcmp(ss1, ss2, SHARED_SECRET_BYTES_KEM)) {
             exit(1);
         }
 
@@ -113,7 +112,7 @@ int main(void) {
         for (size_t j = 0; j < NB_TEST; j++) {
             t1 = cpucyclesStart();
             ns1 = get_time_ns();
-            crypto_kem_dec(ss2, ct, sk);
+            hqc_kem_decaps(ss2, sk, ct);
             ns2 = get_time_ns();
             t2 = cpucyclesStop();
 

@@ -7,7 +7,7 @@
  * - Ciphertext corruption tests:
  *   - Single-field corruption in **u**, **v**, and **salt**.
  *   - Double-field corruption in **(u & v)**, **(v & salt)**, and **(u & salt)**.
- * - Secret key component corruption tests for a dek_kem laid out as:
+ * - Secret key component corruption tests for a dk_kem laid out as:
  *   @code
  *   dk_kem = [ ek_kem | dk_pke | sigma | seed_kem ]
  *   @endcode
@@ -25,15 +25,12 @@
 #define _DEFAULT_SOURCE
 
 #include <munit.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/syscall.h>
-#include <unistd.h>
-
-#include "api.h"
+#include "hqc-kem.h"
 #include "munit_utils.h"
 #include "parameters.h"
-#include "symmetric.h"
 
 /** @defgroup helpers Internal helpers
  *  @brief Utilities used by tests.
@@ -56,7 +53,26 @@ static inline void flip_random_bit(uint8_t* buf, size_t start, size_t len) {
     buf[start + idx] ^= bit;
 }
 
+/**
+ * @brief Fill a buffer with the bitwise complement of another buffer.
+ *
+ * This is used to prefill decapsulation outputs with a value guaranteed to differ
+ * from a known shared secret. That way, a decapsulation routine that fails to
+ * write output cannot accidentally pass an equality assertion.
+ *
+ * @param[out] dst Destination buffer.
+ * @param[in]  src Source buffer.
+ * @param[in]  len Number of bytes to copy.
+ */
+static inline void fill_bitwise_not(uint8_t* dst, const uint8_t* src, size_t len) {
+    for (size_t i = 0; i < len; ++i) {
+        dst[i] = (uint8_t)~src[i];
+    }
+}
+
 /** @} */ /* end of helpers */
+
+extern int randombytes_init(void);
 
 /** @defgroup tests MUnit tests
  *  @brief Test cases for KEM API and corruption behavior.
@@ -71,7 +87,7 @@ static inline void flip_random_bit(uint8_t* buf, size_t start, size_t len) {
  * @return MUNIT_OK on success; failures are asserted.
  *
  * @test Ensures that for a valid `(pk, sk)` and ciphertext `ct`, the shared secret
- *       produced by `crypto_kem_enc` equals that from `crypto_kem_dec`.
+ *       produced by `hqc_kem_encaps` equals that from `hqc_kem_decaps`.
  */
 static MunitResult test_kem_api(const MunitParameter params[], void* user_data) {
     (void)user_data;
@@ -84,23 +100,21 @@ static MunitResult test_kem_api(const MunitParameter params[], void* user_data) 
             iterations = parsed;
     }
 
+    munit_assert_int(randombytes_init(), ==, 0);
+
     for (int run = 0; run < iterations; run++) {
-        unsigned char pk[PUBLIC_KEY_BYTES] = {0};
-        unsigned char sk[SECRET_KEY_BYTES] = {0};
-        unsigned char ct[CIPHERTEXT_BYTES] = {0};
-        unsigned char ss1[SHARED_SECRET_BYTES] = {0};
-        unsigned char ss2[SHARED_SECRET_BYTES] = {0};
+        uint8_t pk[PUBLIC_KEY_BYTES_KEM] = {0};
+        uint8_t sk[SECRET_KEY_BYTES_KEM] = {0};
+        uint8_t ct[CIPHERTEXT_BYTES_KEM] = {0};
+        uint8_t ss_enc[SHARED_SECRET_BYTES_KEM] = {0};
+        uint8_t ss_dec[SHARED_SECRET_BYTES_KEM] = {0};
 
-        /* Fresh deterministic PRNG seed per run */
-        unsigned char seed[48] = {0};
-        syscall(SYS_getrandom, seed, sizeof seed, 0);
-        prng_init(seed, NULL, sizeof seed, 0);
+        munit_assert_int(hqc_kem_keygen(pk, sk), ==, 0);
+        munit_assert_int(hqc_kem_encaps(ct, ss_enc, pk), ==, 0);
+        fill_bitwise_not(ss_dec, ss_enc, sizeof ss_dec);
+        munit_assert_int(hqc_kem_decaps(ss_dec, sk, ct), ==, 0);
 
-        crypto_kem_keypair(pk, sk);
-        crypto_kem_enc(ct, ss1, pk);
-        crypto_kem_dec(ss2, ct, sk);
-
-        munit_assert_memory_equal(SHARED_SECRET_BYTES, ss1, ss2);
+        munit_assert_memory_equal(SHARED_SECRET_BYTES_KEM, ss_enc, ss_dec);
     }
 
     return MUNIT_OK;
@@ -131,14 +145,12 @@ static MunitResult test_kem_ct_corruption(const MunitParameter params[], void* u
     (void)params;
     (void)user_data;
 
-    uint8_t pk[PUBLIC_KEY_BYTES] = {0};
-    uint8_t sk[SECRET_KEY_BYTES] = {0};
-    uint8_t ct[CIPHERTEXT_BYTES] = {0};
-    uint8_t mutated[CIPHERTEXT_BYTES] = {0};
-    uint8_t ss_enc[SHARED_SECRET_BYTES] = {0};
-    uint8_t ss_dec[SHARED_SECRET_BYTES] = {0};
-    unsigned char seed[48] = {0};
-
+    uint8_t pk[PUBLIC_KEY_BYTES_KEM] = {0};
+    uint8_t sk[SECRET_KEY_BYTES_KEM] = {0};
+    uint8_t ct[CIPHERTEXT_BYTES_KEM] = {0};
+    uint8_t mutated[CIPHERTEXT_BYTES_KEM] = {0};
+    uint8_t ss_enc[SHARED_SECRET_BYTES_KEM] = {0};
+    uint8_t ss_dec[SHARED_SECRET_BYTES_KEM] = {0};
     /* Component offsets within ct */
     const size_t off_u = 0U;
     const size_t len_u = VEC_N_SIZE_BYTES;
@@ -147,50 +159,55 @@ static MunitResult test_kem_ct_corruption(const MunitParameter params[], void* u
     const size_t off_salt = off_v + len_v;
     const size_t len_salt = SALT_BYTES;
 
-    syscall(SYS_getrandom, seed, sizeof seed, 0);
-    prng_init(seed, NULL, sizeof seed, 0);
+    munit_assert_int(randombytes_init(), ==, 0);
 
-    crypto_kem_keypair(pk, sk);
-    crypto_kem_enc(ct, ss_enc, pk);
+    munit_assert_int(hqc_kem_keygen(pk, sk), ==, 0);
+    munit_assert_int(hqc_kem_encaps(ct, ss_enc, pk), ==, 0);
 
     /* Corrupt u */
-    memcpy(mutated, ct, CIPHERTEXT_BYTES);
+    memcpy(mutated, ct, CIPHERTEXT_BYTES_KEM);
     flip_random_bit(mutated, off_u, len_u);
-    crypto_kem_dec(ss_dec, mutated, sk);
-    munit_assert_memory_not_equal(SHARED_SECRET_BYTES, ss_enc, ss_dec);
+    memcpy(ss_dec, ss_enc, sizeof ss_dec);
+    munit_assert_int(hqc_kem_decaps(ss_dec, sk, mutated), ==, 0);
+    munit_assert_memory_not_equal(SHARED_SECRET_BYTES_KEM, ss_enc, ss_dec);
 
     /* Corrupt v */
-    memcpy(mutated, ct, CIPHERTEXT_BYTES);
+    memcpy(mutated, ct, CIPHERTEXT_BYTES_KEM);
     flip_random_bit(mutated, off_v, len_v);
-    crypto_kem_dec(ss_dec, mutated, sk);
-    munit_assert_memory_not_equal(SHARED_SECRET_BYTES, ss_enc, ss_dec);
+    memcpy(ss_dec, ss_enc, sizeof ss_dec);
+    munit_assert_int(hqc_kem_decaps(ss_dec, sk, mutated), ==, 0);
+    munit_assert_memory_not_equal(SHARED_SECRET_BYTES_KEM, ss_enc, ss_dec);
 
     /* Corrupt salt */
-    memcpy(mutated, ct, CIPHERTEXT_BYTES);
+    memcpy(mutated, ct, CIPHERTEXT_BYTES_KEM);
     flip_random_bit(mutated, off_salt, len_salt);
-    crypto_kem_dec(ss_dec, mutated, sk);
-    munit_assert_memory_not_equal(SHARED_SECRET_BYTES, ss_enc, ss_dec);
+    memcpy(ss_dec, ss_enc, sizeof ss_dec);
+    munit_assert_int(hqc_kem_decaps(ss_dec, sk, mutated), ==, 0);
+    munit_assert_memory_not_equal(SHARED_SECRET_BYTES_KEM, ss_enc, ss_dec);
 
     /* Corrupt u & v */
-    memcpy(mutated, ct, CIPHERTEXT_BYTES);
+    memcpy(mutated, ct, CIPHERTEXT_BYTES_KEM);
     flip_random_bit(mutated, off_u, len_u);
     flip_random_bit(mutated, off_v, len_v);
-    crypto_kem_dec(ss_dec, mutated, sk);
-    munit_assert_memory_not_equal(SHARED_SECRET_BYTES, ss_enc, ss_dec);
+    memcpy(ss_dec, ss_enc, sizeof ss_dec);
+    munit_assert_int(hqc_kem_decaps(ss_dec, sk, mutated), ==, 0);
+    munit_assert_memory_not_equal(SHARED_SECRET_BYTES_KEM, ss_enc, ss_dec);
 
     /* Corrupt v & salt */
-    memcpy(mutated, ct, CIPHERTEXT_BYTES);
+    memcpy(mutated, ct, CIPHERTEXT_BYTES_KEM);
     flip_random_bit(mutated, off_v, len_v);
     flip_random_bit(mutated, off_salt, len_salt);
-    crypto_kem_dec(ss_dec, mutated, sk);
-    munit_assert_memory_not_equal(SHARED_SECRET_BYTES, ss_enc, ss_dec);
+    memcpy(ss_dec, ss_enc, sizeof ss_dec);
+    munit_assert_int(hqc_kem_decaps(ss_dec, sk, mutated), ==, 0);
+    munit_assert_memory_not_equal(SHARED_SECRET_BYTES_KEM, ss_enc, ss_dec);
 
     /* Corrupt u & salt */
-    memcpy(mutated, ct, CIPHERTEXT_BYTES);
+    memcpy(mutated, ct, CIPHERTEXT_BYTES_KEM);
     flip_random_bit(mutated, off_u, len_u);
     flip_random_bit(mutated, off_salt, len_salt);
-    crypto_kem_dec(ss_dec, mutated, sk);
-    munit_assert_memory_not_equal(SHARED_SECRET_BYTES, ss_enc, ss_dec);
+    memcpy(ss_dec, ss_enc, sizeof ss_dec);
+    munit_assert_int(hqc_kem_decaps(ss_dec, sk, mutated), ==, 0);
+    munit_assert_memory_not_equal(SHARED_SECRET_BYTES_KEM, ss_enc, ss_dec);
 
     return MUNIT_OK;
 }
@@ -207,7 +224,7 @@ static MunitResult test_kem_ct_corruption(const MunitParameter params[], void* u
  * - **ek_kem** corruption  → decapsulation fails (ss differs).
  * - **dk_pke** corruption  → decapsulation fails (ss differs).
  * - **sigma** corruption   → decapsulation succeeds (ss equal).
- * - **seed_kem** corruption→ decapsulation succeeds (ss equal).
+ * - **seed_kem** corruption → decapsulation succeeds (ss equal).
  *
  * @param params     Unused.
  * @param user_data  Unused.
@@ -217,56 +234,57 @@ static MunitResult test_kem_sk_corruption(const MunitParameter params[], void* u
     (void)params;
     (void)user_data;
 
-    uint8_t pk[PUBLIC_KEY_BYTES] = {0};
-    uint8_t sk[SECRET_KEY_BYTES] = {0};
-    uint8_t sk_bad[SECRET_KEY_BYTES] = {0};
-    uint8_t ct[CIPHERTEXT_BYTES] = {0};
-    uint8_t ss_enc[SHARED_SECRET_BYTES] = {0};
-    uint8_t ss_dec[SHARED_SECRET_BYTES] = {0};
-    unsigned char seed[48] = {0};
-
+    uint8_t pk[PUBLIC_KEY_BYTES_KEM] = {0};
+    uint8_t sk[SECRET_KEY_BYTES_KEM] = {0};
+    uint8_t sk_bad[SECRET_KEY_BYTES_KEM] = {0};
+    uint8_t ct[CIPHERTEXT_BYTES_KEM] = {0};
+    uint8_t ss_enc[SHARED_SECRET_BYTES_KEM] = {0};
+    uint8_t ss_dec[SHARED_SECRET_BYTES_KEM] = {0};
     /* Layout offsets inside dk_kem (sk) */
     const size_t off_ek_kem = 0U;
-    const size_t len_ek_kem = PUBLIC_KEY_BYTES;
+    const size_t len_ek_kem = PUBLIC_KEY_BYTES_KEM;
 
     const size_t off_dk_pke = off_ek_kem + len_ek_kem;
-    const size_t len_dk_pke = SEED_BYTES;
+    const size_t len_dk_pke = SECRET_KEY_BYTES_PKE;
 
     const size_t off_sigma = off_dk_pke + len_dk_pke;
-    const size_t len_sigma = PARAM_SECURITY_BYTES;
+    const size_t len_sigma = PARAM_K;
 
     const size_t off_seed_kem = off_sigma + len_sigma;
     const size_t len_seed_kem = SEED_BYTES;
 
-    syscall(SYS_getrandom, seed, sizeof seed, 0);
-    prng_init(seed, NULL, sizeof seed, 0);
+    munit_assert_int(randombytes_init(), ==, 0);
 
-    crypto_kem_keypair(pk, sk);
-    crypto_kem_enc(ct, ss_enc, pk);
+    munit_assert_int(hqc_kem_keygen(pk, sk), ==, 0);
+    munit_assert_int(hqc_kem_encaps(ct, ss_enc, pk), ==, 0);
 
     /* ek_kem → expect failure */
     memcpy(sk_bad, sk, sizeof sk_bad);
     flip_random_bit(sk_bad, off_ek_kem, len_ek_kem);
-    crypto_kem_dec(ss_dec, ct, sk_bad);
-    munit_assert_memory_not_equal(SHARED_SECRET_BYTES, ss_enc, ss_dec);
+    memcpy(ss_dec, ss_enc, sizeof ss_dec);
+    munit_assert_int(hqc_kem_decaps(ss_dec, sk_bad, ct), ==, 0);
+    munit_assert_memory_not_equal(SHARED_SECRET_BYTES_KEM, ss_enc, ss_dec);
 
     /* dk_pke → expect failure */
     memcpy(sk_bad, sk, sizeof sk_bad);
     flip_random_bit(sk_bad, off_dk_pke, len_dk_pke);
-    crypto_kem_dec(ss_dec, ct, sk_bad);
-    munit_assert_memory_not_equal(SHARED_SECRET_BYTES, ss_enc, ss_dec);
+    memcpy(ss_dec, ss_enc, sizeof ss_dec);
+    munit_assert_int(hqc_kem_decaps(ss_dec, sk_bad, ct), ==, 0);
+    munit_assert_memory_not_equal(SHARED_SECRET_BYTES_KEM, ss_enc, ss_dec);
 
     /* sigma → expect success */
     memcpy(sk_bad, sk, sizeof sk_bad);
     flip_random_bit(sk_bad, off_sigma, len_sigma);
-    crypto_kem_dec(ss_dec, ct, sk_bad);
-    munit_assert_memory_equal(SHARED_SECRET_BYTES, ss_enc, ss_dec);
+    fill_bitwise_not(ss_dec, ss_enc, sizeof ss_dec);
+    munit_assert_int(hqc_kem_decaps(ss_dec, sk_bad, ct), ==, 0);
+    munit_assert_memory_equal(SHARED_SECRET_BYTES_KEM, ss_enc, ss_dec);
 
     /* seed_kem → expect success */
     memcpy(sk_bad, sk, sizeof sk_bad);
     flip_random_bit(sk_bad, off_seed_kem, len_seed_kem);
-    crypto_kem_dec(ss_dec, ct, sk_bad);
-    munit_assert_memory_equal(SHARED_SECRET_BYTES, ss_enc, ss_dec);
+    fill_bitwise_not(ss_dec, ss_enc, sizeof ss_dec);
+    munit_assert_int(hqc_kem_decaps(ss_dec, sk_bad, ct), ==, 0);
+    munit_assert_memory_equal(SHARED_SECRET_BYTES_KEM, ss_enc, ss_dec);
 
     return MUNIT_OK;
 }
@@ -279,7 +297,7 @@ static MunitResult test_kem_sk_corruption(const MunitParameter params[], void* u
  * static char* iteration_values[] = { (char*)"1", (char*)"10", (char*)"100", NULL };
  * @endcode
  */
-static char* iteration_values[] = {(char*)"1", NULL};
+static char* iteration_values[] = {(char*)"10", NULL};
 
 /**
  * @brief Parameter schema for @ref test_kem_api.

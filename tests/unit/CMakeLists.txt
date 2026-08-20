@@ -21,6 +21,7 @@ set(RS_TEST_SRC   ${TESTS_DIR}/test_reed_solomon.c)
 set(VEC_TEST_SRC  ${TESTS_DIR}/test_vector.c)
 set(MAIN_TEST_SRC ${TESTS_DIR}/tests_main.c)
 set(GF2X_NTL_SRC  ${TESTS_DIR}/test_vect_mul.cpp)
+set(TEST_RANDOMBYTES_SRC ${CMAKE_SOURCE_DIR}/tests/common/randombytes.c)
 
 set(COMMON_INCLUDES
         ${CMAKE_SOURCE_DIR}/src/common
@@ -72,6 +73,7 @@ foreach(param_variant IN LISTS VARIANTS)
             ${RS_TEST_SRC}
             ${VEC_TEST_SRC}
             ${MAIN_TEST_SRC}
+            ${TEST_RANDOMBYTES_SRC}
     )
     if(HQC_NTL_FOUND)
         list(APPEND unit_sources ${GF2X_NTL_SRC})
