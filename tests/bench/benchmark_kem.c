@@ -81,14 +81,14 @@ int main(void) {
 
     // warm-up
     for (size_t i = 0; i < NB_TEST; i++) {
-        hqc_kem_encaps(ct, ss1, pk);
+        hqc_kem_encaps(ss1, ct, pk);
     }
     for (size_t i = 0; i < NB_SAMPLES; i++) {
         uint64_t timer_c = 0, timer_ns = 0;
         for (size_t j = 0; j < NB_TEST; j++) {
             t1 = cpucyclesStart();
             ns1 = get_time_ns();
-            hqc_kem_encaps(ct, ss1, pk);
+            hqc_kem_encaps(ss1, ct, pk);
             ns2 = get_time_ns();
             t2 = cpucyclesStop();
 

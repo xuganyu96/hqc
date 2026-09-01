@@ -56,7 +56,7 @@ int main(void) {
     uint8_t key2[SHARED_SECRET_BYTES_KEM] = {0};
 
     hqc_kem_keygen(pk, sk);
-    hqc_kem_encaps(ct, key1, pk);
+    hqc_kem_encaps(key1, ct, pk);
     hqc_kem_decaps(key2, sk, ct);
 
     printf("\n\nsecret1: ");

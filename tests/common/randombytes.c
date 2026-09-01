@@ -29,6 +29,7 @@ static shake256incctx prng_ctx;
 static int prng_initialized = 0;
 
 int randombytes_init(void);
+void randombytes_seed(const uint8_t *seed, size_t seed_len);
 
 static void prng_init(const uint8_t *seed, uint32_t seed_len) {
     uint8_t domain = RANDOMBYTES_DOMAIN;
@@ -43,6 +44,21 @@ static void prng_init(const uint8_t *seed, uint32_t seed_len) {
 
 static void prng_get_bytes(uint8_t *output, uint32_t outlen) {
     shake256_inc_squeeze(output, outlen, &prng_ctx);
+}
+
+/**
+ * @brief Deterministically (re)seed the test PRNG (test-only helper).
+ *
+ * Unlike ::randombytes_init(), which seeds from OS entropy, this lets tests reseed
+ * the stream with caller-provided material so that two subsequent sequences of
+ * ::randombytes() calls are reproducible.
+ *
+ * @param[in] seed     Pointer to the seed material.
+ * @param[in] seed_len Length of @p seed in bytes.
+ */
+void randombytes_seed(const uint8_t *seed, size_t seed_len) {
+    prng_init(seed, (uint32_t)seed_len);
+    prng_initialized = 1;
 }
 
 int randombytes_init(void) {

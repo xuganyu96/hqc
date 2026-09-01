@@ -9,16 +9,16 @@ cmake --build build-ref
 make
 
 $CURRENT_DIR/build-ref/tests/kats/test_kat_hqc_1
+mv $CURRENT_DIR/PQCkemKAT_32.req $CURRENT_DIR/kats/ref/hqc-1/
+mv $CURRENT_DIR/PQCkemKAT_32.rsp $CURRENT_DIR/kats/ref/hqc-1/
+
 $CURRENT_DIR/build-ref/tests/kats/test_kat_hqc_3
+mv $CURRENT_DIR/PQCkemKAT_32.req $CURRENT_DIR/kats/ref/hqc-3/
+mv $CURRENT_DIR/PQCkemKAT_32.rsp $CURRENT_DIR/kats/ref/hqc-3/
+
 $CURRENT_DIR/build-ref/tests/kats/test_kat_hqc_5
-
-mv $CURRENT_DIR/PQCkemKAT_2321.req $CURRENT_DIR/kats/ref/hqc-1/
-mv $CURRENT_DIR/PQCkemKAT_4602.req $CURRENT_DIR/kats/ref/hqc-3/
-mv $CURRENT_DIR/PQCkemKAT_7333.req $CURRENT_DIR/kats/ref/hqc-5/
-
-mv $CURRENT_DIR/PQCkemKAT_2321.rsp $CURRENT_DIR/kats/ref/hqc-1/
-mv $CURRENT_DIR/PQCkemKAT_4602.rsp $CURRENT_DIR/kats/ref/hqc-3/
-mv $CURRENT_DIR/PQCkemKAT_7333.rsp $CURRENT_DIR/kats/ref/hqc-5/
+mv $CURRENT_DIR/PQCkemKAT_32.req $CURRENT_DIR/kats/ref/hqc-5/
+mv $CURRENT_DIR/PQCkemKAT_32.rsp $CURRENT_DIR/kats/ref/hqc-5/
 
 $CURRENT_DIR/build-ref/tests/kats/test_intermediates_values_hqc_1 > $CURRENT_DIR/kats/ref/hqc-1/intermediates_values
 $CURRENT_DIR/build-ref/tests/kats/test_intermediates_values_hqc_3 > $CURRENT_DIR/kats/ref/hqc-3/intermediates_values
@@ -31,16 +31,16 @@ cmake --build build-avx256
 make
 
 $CURRENT_DIR/build-avx256/tests/kats/test_kat_hqc_1
+mv $CURRENT_DIR/PQCkemKAT_32.req $CURRENT_DIR/kats/x86_64/avx256/hqc-1/
+mv $CURRENT_DIR/PQCkemKAT_32.rsp $CURRENT_DIR/kats/x86_64/avx256/hqc-1/
+
 $CURRENT_DIR/build-avx256/tests/kats/test_kat_hqc_3
+mv $CURRENT_DIR/PQCkemKAT_32.req $CURRENT_DIR/kats/x86_64/avx256/hqc-3/
+mv $CURRENT_DIR/PQCkemKAT_32.rsp $CURRENT_DIR/kats/x86_64/avx256/hqc-3/
+
 $CURRENT_DIR/build-avx256/tests/kats/test_kat_hqc_5
-
-mv $CURRENT_DIR/PQCkemKAT_2321.req $CURRENT_DIR/kats/x86_64/avx256/hqc-1/
-mv $CURRENT_DIR/PQCkemKAT_4602.req $CURRENT_DIR/kats/x86_64/avx256/hqc-3/
-mv $CURRENT_DIR/PQCkemKAT_7333.req $CURRENT_DIR/kats/x86_64/avx256/hqc-5/
-
-mv $CURRENT_DIR/PQCkemKAT_2321.rsp $CURRENT_DIR/kats/x86_64/avx256/hqc-1/
-mv $CURRENT_DIR/PQCkemKAT_4602.rsp $CURRENT_DIR/kats/x86_64/avx256/hqc-3/
-mv $CURRENT_DIR/PQCkemKAT_7333.rsp $CURRENT_DIR/kats/x86_64/avx256/hqc-5/
+mv $CURRENT_DIR/PQCkemKAT_32.req $CURRENT_DIR/kats/x86_64/avx256/hqc-5/
+mv $CURRENT_DIR/PQCkemKAT_32.rsp $CURRENT_DIR/kats/x86_64/avx256/hqc-5/
 
 $CURRENT_DIR/build-avx256/tests/kats/test_intermediates_values_hqc_1 > $CURRENT_DIR/kats/x86_64/avx256/hqc-1/intermediates_values
 $CURRENT_DIR/build-avx256/tests/kats/test_intermediates_values_hqc_3 > $CURRENT_DIR/kats/x86_64/avx256/hqc-3/intermediates_values

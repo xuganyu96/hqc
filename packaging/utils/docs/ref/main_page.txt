@@ -106,10 +106,8 @@
  * ciphertext **c_kem** are composed as follows:
  *
  * - **ek_kem = (h, s)**
- * - **dk_kem = (ek_kem, dk_pke, z, d)**
+ * - **dk_kem = seed_kem**
  * - **c_kem = ((u, v), salt)**
- *
- * where **z** is the implicit rejection value and **d** is the PKE key generation seed.
  *
  * The shared secret is derived by:
  * 1. Hashing **ek_kem** with **SHA3-256**.
@@ -120,7 +118,7 @@
  * To reduce key sizes:
  * - **ek_kem** is compressed as (**seed_ek, s**),
  *   where **seed_ek** is the PKE encryption key seed (used to generate **h**).
- * - **dk_kem** is stored as (**ek_kem, dk_pke, z, d**),
- *   where **dk_pke** is the seed used to generate **y** and **d** is the PKE key generation seed.
+ * - **dk_kem** is compressed as the KEM master seed **seed_kem**, from which
+ *   **ek_kem**, **dk_pke**, and the implicit rejection value are re-derived whenever needed.
  *
  */

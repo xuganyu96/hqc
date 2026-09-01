@@ -98,7 +98,7 @@ int main(void) {
         fprintBstr(fp_rsp, "pk = ", pk, CRYPTO_PUBLICKEYBYTES);
         fprintBstr(fp_rsp, "sk = ", sk, CRYPTO_SECRETKEYBYTES);
 
-        if ((ret_val = hqc_kem_encaps(ct, ss, pk)) != 0) {
+        if ((ret_val = hqc_kem_encaps(ss, ct, pk)) != 0) {
             printf("hqc_kem_encaps returned <%d>\n", ret_val);
             return KAT_CRYPTO_FAILURE;
         }

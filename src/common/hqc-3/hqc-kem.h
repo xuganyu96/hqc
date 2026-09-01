@@ -10,7 +10,7 @@
 
 #define CRYPTO_ALGNAME "HQC-3"
 
-#define CRYPTO_SECRETKEYBYTES  4602U
+#define CRYPTO_SECRETKEYBYTES  32U
 #define CRYPTO_PUBLICKEYBYTES  4514U
 #define CRYPTO_BYTES           32U
 #define CRYPTO_CIPHERTEXTBYTES 8978U
@@ -22,15 +22,10 @@
  * @param[out] dk_kem Decapsulation key buffer (size CRYPTO_SECRETKEYBYTES).
  *
  * @details The encapsulation key is the PKE public key.
- *          The decapsulation key is serialized as:
- *          @code
- *          dk_kem = [ ek_kem | dk_pke | sigma | seed_kem ]
- *          @endcode
- *          with:
- *          - ek_kem: PKE public key (encapsulation key)
- *          - dk_pke: PKE secret key (decryption key)
- *          - sigma: implicit rejection value derived from `seed_kem` via the HQC XOF
- *          - seed_kem: KEM master seed from which `seed_pke` and `sigma` are derived
+ *          The decapsulation key is the KEM master seed `seed_kem`, from which
+ *          `seed_pke` and `sigma` are re-derived via the HQC XOF whenever needed:
+ *          - seed_pke: seed used to regenerate the PKE keypair (`ek_pke`, `dk_pke`)
+ *          - sigma: implicit rejection value used during decapsulation
  *
  * @return 0 on success, -1 on randombytes failure.
  */
@@ -39,15 +34,15 @@ int8_t hqc_kem_keygen(uint8_t *ek_kem, uint8_t *dk_kem);
 /**
  * @brief Encapsulate a shared secret using the public key.
  *
- * @param[out] c_kem Ciphertext buffer (size CRYPTO_CIPHERTEXTBYTES).
  * @param[out] K     Shared secret buffer (size CRYPTO_BYTES).
+ * @param[out] c_kem Ciphertext buffer (size CRYPTO_CIPHERTEXTBYTES).
  * @param[in]  ek_kem Encapsulation key buffer (size CRYPTO_PUBLICKEYBYTES).
  *
  * @details The encapsulation key is the PKE public key.
  *
  * @return 0 on success, -1 on randombytes failure.
  */
-int8_t hqc_kem_encaps(uint8_t *c_kem, uint8_t *K, const uint8_t *ek_kem);
+int8_t hqc_kem_encaps(uint8_t *K, uint8_t *c_kem, const uint8_t *ek_kem);
 
 /**
  * @brief Decapsulate a shared secret using the secret key.
@@ -56,15 +51,10 @@ int8_t hqc_kem_encaps(uint8_t *c_kem, uint8_t *K, const uint8_t *ek_kem);
  * @param[in]  dk_kem  Decapsulation key buffer (size CRYPTO_SECRETKEYBYTES).
  * @param[in]  c_kem   Ciphertext buffer (size CRYPTO_CIPHERTEXTBYTES).
  *
- * @details The decapsulation key is serialized as:
- *          @code
- *          dk_kem = [ ek_kem | dk_pke | sigma | seed_kem ]
- *          @endcode
- *          with:
- *          - ek_kem: PKE public key (encapsulation key)
- *          - dk_pke: PKE secret key (decryption key)
- *          - sigma: implicit rejection value derived from `seed_kem` via the HQC XOF
- *          - seed_kem: KEM master seed from which `seed_pke` and `sigma` are derived
+ * @details The decapsulation key is the KEM master seed `seed_kem`, from which
+ *          `seed_pke` and `sigma` are re-derived via the HQC XOF whenever needed:
+ *          - seed_pke: seed used to regenerate the PKE keypair (`ek_pke`, `dk_pke`)
+ *          - sigma: implicit rejection value used during decapsulation
  *
  * @return 0 on success.
  */

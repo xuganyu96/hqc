@@ -19,69 +19,52 @@
 #endif
 
 /**
- * @brief Internal key generation using provided randomness.
+ * @brief Internal key generation: derives the KEM keypair from a master seed.
  *
- * This follows a KeyGen_internal flow, deriving all key material from a single seed:
- *  - (seed_pke, sigma) <- XOF(seed_kem)
- *  - (ek_pke, dk_pke) <- HQC-PKE.KeyGen(seed_pke)
- *  - ek_kem <- ek_pke
- *  - dk_kem <- ek_kem || dk_pke || sigma || seed_kem
+ * This follows a KeyGen_internal flow, deriving the keypair from the single seed
+ * `seed_kem`:
+ *  - seed_pke          <- XOF(seed_kem)
+ *  - (ek_pke, dk_pke)  <- HQC-PKE.KeyGen(seed_pke)
+ *  - ek_kem            <- ek_pke
+ *  - dk_kem            <- seed_kem
+ *
+ * Decapsulation performs the same derivation inline on `dk_kem`, and additionally
+ * squeezes `sigma` for implicit rejection (which key generation does not need).
  *
  * @param[out] ek_kem   Pointer to the output buffer where the encapsulation key will be stored.
  * @param[out] dk_kem   Pointer to the output buffer where the decapsulation key will be stored.
- * @param[in]  seed_kem Pointer to the sampled KEM master seed, from which `seed_pke` and `sigma` are derived
- *                       via the HQC XOF and which is itself stored in `dk_kem`.
+ * @param[in]  seed_kem Pointer to the KEM master seed.
  *
  * @return 0 on success.
  */
 static int8_t hqc_kem_keygen_internal(uint8_t *ek_kem, uint8_t *dk_kem, const uint8_t *seed_kem) {
-#ifdef VERBOSE
-    printf("\n\n\n### KEYGEN ###");
-#endif
     uint8_t seed_pke[SEED_BYTES] = {0};
-    uint8_t sigma[PARAM_K] = {0};
     uint8_t ek_pke[PUBLIC_KEY_BYTES_PKE] = {0};
     uint8_t dk_pke[SECRET_KEY_BYTES_PKE] = {0};
     shake256_xof_ctx ctx_kem = {0};
 
-    // Derive seed_pke and sigma from seed_kem
+    // Derive seed_pke from seed_kem
     xof_init(&ctx_kem, seed_kem, SEED_BYTES);
     xof_get_bytes(&ctx_kem, seed_pke, SEED_BYTES);
-    xof_get_bytes(&ctx_kem, sigma, PARAM_K);
 
-    // Compute HQC-PKE keypair
+    // Compute HQC-PKE keypair, then assemble the KEM keys
     hqc_pke_keygen(ek_pke, dk_pke, seed_pke);
-
-    // Compute HQC-KEM keypair
     memcpy(ek_kem, ek_pke, PUBLIC_KEY_BYTES_PKE);
-    memcpy(dk_kem, ek_kem, PUBLIC_KEY_BYTES_KEM);
-    memcpy(dk_kem + PUBLIC_KEY_BYTES_KEM, dk_pke, SECRET_KEY_BYTES_PKE);
-    memcpy(dk_kem + PUBLIC_KEY_BYTES_KEM + SECRET_KEY_BYTES_PKE, sigma, PARAM_K);
-    memcpy(dk_kem + PUBLIC_KEY_BYTES_KEM + SECRET_KEY_BYTES_PKE + PARAM_K, seed_kem, SEED_BYTES);
+    memcpy(dk_kem, seed_kem, SEED_BYTES);
 
 #ifdef VERBOSE
     printf("\n\nseed_kem: ");
     for (size_t i = 0; i < SEED_BYTES; ++i) printf("%02x", seed_kem[i]);
     printf("\n\nseed_pke: ");
     for (size_t i = 0; i < SEED_BYTES; ++i) printf("%02x", seed_pke[i]);
-    printf("\n\nsigma: ");
-    for (size_t i = 0; i < PARAM_K; ++i) printf("%02x", sigma[i]);
-    printf("\n\nek_kem: ");
-    for (size_t i = 0; i < PUBLIC_KEY_BYTES_KEM; ++i) printf("%02x", ek_kem[i]);
-    printf("\n\ndk_kem.ek_kem: ");
-    for (size_t i = 0; i < PUBLIC_KEY_BYTES_KEM; ++i) printf("%02x", dk_kem[i]);
-    printf("\n\ndk_kem.dk_pke: ");
-    for (size_t i = 0; i < SECRET_KEY_BYTES_PKE; ++i) printf("%02x", dk_kem[PUBLIC_KEY_BYTES_KEM + i]);
-    printf("\n\ndk_kem.sigma: ");
-    for (size_t i = 0; i < PARAM_K; ++i) printf("%02x", dk_kem[PUBLIC_KEY_BYTES_KEM + SECRET_KEY_BYTES_PKE + i]);
-    printf("\n\ndk_kem.seed_kem: ");
-    for (size_t i = 0; i < SEED_BYTES; ++i)
-        printf("%02x", dk_kem[PUBLIC_KEY_BYTES_KEM + SECRET_KEY_BYTES_PKE + PARAM_K + i]);
+    printf("\n\nek_pke: ");
+    for (size_t i = 0; i < PUBLIC_KEY_BYTES_PKE; ++i) printf("%02x", ek_pke[i]);
+    printf("\n\ndk_pke: ");
+    for (size_t i = 0; i < SECRET_KEY_BYTES_PKE; ++i) printf("%02x", dk_pke[i]);
 #endif
 
     // Zeroize sensitive data
     memset_zero(seed_pke, sizeof seed_pke);
-    memset_zero(sigma, sizeof sigma);
     memset_zero(dk_pke, sizeof dk_pke);
     memset_zero(&ctx_kem, sizeof ctx_kem);
 
@@ -100,12 +83,15 @@ static int8_t hqc_kem_keygen_internal(uint8_t *ek_kem, uint8_t *dk_kem, const ui
  *
  * @return 0 on success, -1 if ::randombytes() fails.
  *
- * @note This function samples `seed_kem` via ::randombytes(); `seed_pke` and `sigma` are
+ * @note This function samples `seed_kem` via ::randombytes(); `seed_pke` is
  *       derived from it using the HQC XOF inside ::hqc_kem_keygen_internal().
  * @note The caller must provide a properly seeded ::randombytes() implementation.
  * @see randombytes
  */
 int8_t hqc_kem_keygen(uint8_t *ek_kem, uint8_t *dk_kem) {
+#ifdef VERBOSE
+    printf("\n\n\n### KEYGEN ###");
+#endif
     uint8_t seed_kem[SEED_BYTES] = {0};
 
     if (randombytes(seed_kem, SEED_BYTES) != 0) {
@@ -115,6 +101,7 @@ int8_t hqc_kem_keygen(uint8_t *ek_kem, uint8_t *dk_kem) {
 
     int8_t ret = hqc_kem_keygen_internal(ek_kem, dk_kem, seed_kem);
 
+    // Zeroize sensitive data
     memset_zero(seed_kem, sizeof seed_kem);
 
     return ret;
@@ -126,16 +113,17 @@ int8_t hqc_kem_keygen(uint8_t *ek_kem, uint8_t *dk_kem) {
  * This follows an Encaps_internal flow with external randomness:
  *  - (K, theta) <- G(H(ek_kem) || m || salt)
  *  - c <- HQC-PKE.Encrypt(ek_kem, m, theta)
+ *  - c_kem <- (c, salt)
  *
- * @param[out] c_kem  Pointer to the output buffer where the KEM ciphertext will be stored.
  * @param[out] K      Pointer to the output buffer where the shared secret will be stored.
+ * @param[out] c_kem  Pointer to the output buffer where the KEM ciphertext will be stored.
  * @param[in]  ek_kem Pointer to the encapsulation key.
  * @param[in]  m      Pointer to PARAM_K bytes of randomness for encapsulation.
  * @param[in]  salt   Pointer to SALT_BYTES of randomness for encapsulation.
  *
  * @return 0 on success.
  */
-static int8_t hqc_kem_encaps_internal(uint8_t *c_kem, uint8_t *K, const uint8_t *ek_kem, const uint8_t *m,
+static int8_t hqc_kem_encaps_internal(uint8_t *K, uint8_t *c_kem, const uint8_t *ek_kem, const uint8_t *m,
                                       const uint8_t *salt) {
 #ifdef VERBOSE
     printf("\n\n\n\n### ENCAPS ###");
@@ -182,8 +170,8 @@ static int8_t hqc_kem_encaps_internal(uint8_t *c_kem, uint8_t *K, const uint8_t 
  *
  * This function uses the encapsulation key (`ek`) to generate a ciphertext (`c_kem`) and a shared secret (`K`).
  *
- * @param[out] c_kem   Pointer to the output buffer where the KEM ciphertext will be stored.
  * @param[out] K       Pointer to the output buffer where the shared secret will be stored.
+ * @param[out] c_kem   Pointer to the output buffer where the KEM ciphertext will be stored.
  * @param[in]  ek_kem  Pointer to the encapsulation key.
  *
  * @return 0 on success, -1 if ::randombytes() fails.
@@ -192,7 +180,7 @@ static int8_t hqc_kem_encaps_internal(uint8_t *c_kem, uint8_t *K, const uint8_t 
  * @note The caller must provide a properly seeded ::randombytes() implementation.
  * @see randombytes
  */
-int8_t hqc_kem_encaps(uint8_t *c_kem, uint8_t *K, const uint8_t *ek_kem) {
+int8_t hqc_kem_encaps(uint8_t *K, uint8_t *c_kem, const uint8_t *ek_kem) {
     uint8_t m[PARAM_K] = {0};
     uint8_t salt[SALT_BYTES] = {0};
 
@@ -203,7 +191,7 @@ int8_t hqc_kem_encaps(uint8_t *c_kem, uint8_t *K, const uint8_t *ek_kem) {
         return -1;
     }
 
-    int8_t ret = hqc_kem_encaps_internal(c_kem, K, ek_kem, m, salt);
+    int8_t ret = hqc_kem_encaps_internal(K, c_kem, ek_kem, m, salt);
 
     // Zeroize sensitive data
     memset_zero(m, sizeof m);
@@ -214,16 +202,18 @@ int8_t hqc_kem_encaps(uint8_t *c_kem, uint8_t *K, const uint8_t *ek_kem) {
 /**
  * @brief Internal decapsulation using provided inputs.
  *
- * This follows a Decaps_internal flow:
- *  - parse dk and c
+ * This follows a Decaps_internal flow. `dk_kem` is the KEM master seed `seed_kem`:
+ *  - (seed_pke, sigma) <- XOF(dk_kem)
+ *  - (ek_pke, dk_pke)  <- HQC-PKE.KeyGen(seed_pke)
+ *  - parse c
  *  - m' <- HQC-PKE.Decrypt(dk_pke, c)
- *  - (K', theta') <- G(m' || H(ek))
- *  - K_bar <- J(H(ek), sigma, c)
- *  - c' <- HQC-PKE.Encrypt(ek, m', theta')
+ *  - (K', theta') <- G(H(ek_pke) || m' || salt)
+ *  - K_bar <- J(H(ek_pke), sigma, c)
+ *  - c' <- HQC-PKE.Encrypt(ek_pke, m', theta')
  *  - select K' or K_bar depending on ciphertext match
  *
  * @param[out] K_prime Pointer to the output buffer where the recovered shared secret will be stored.
- * @param[in]  dk_kem  Pointer to the decapsulation key.
+ * @param[in]  dk_kem  Pointer to the decapsulation key, i.e. the KEM master seed `seed_kem`.
  * @param[in]  c_kem   Pointer to the input KEM ciphertext.
  *
  * @return 0 on success.
@@ -233,14 +223,15 @@ static int8_t hqc_kem_decaps_internal(uint8_t *K_prime, const uint8_t *dk_kem, c
     printf("\n\n\n\n### DECAPS ###");
 #endif
 
-    uint8_t ek_kem[PUBLIC_KEY_BYTES_KEM] = {0};
+    uint8_t seed_pke[SEED_BYTES] = {0};
+    shake256_xof_ctx ctx_kem = {0};
+    uint8_t ek_pke[PUBLIC_KEY_BYTES_PKE] = {0};
     uint8_t dk_pke[SECRET_KEY_BYTES_PKE] = {0};
     uint8_t sigma[PARAM_K] = {0};
     uint8_t m_prime[PARAM_K] = {0};
-    uint8_t hash_ek_kem[SEED_BYTES] = {0};
+    uint8_t hash_ek_pke[SEED_BYTES] = {0};
     uint8_t K_theta_prime[SHARED_SECRET_BYTES_KEM + SEED_BYTES] = {0};
     uint8_t K_bar[SHARED_SECRET_BYTES_KEM] = {0};
-    uint8_t theta_prime[SEED_BYTES] = {0};
     uint64_t c_pke_u[VEC_N_PKE_WORDS] = {0};
     uint64_t c_pke_v[VEC_N1N2_PKE_WORDS] = {0};
     uint8_t salt[SALT_BYTES] = {0};
@@ -249,10 +240,25 @@ static int8_t hqc_kem_decaps_internal(uint8_t *K_prime, const uint8_t *dk_kem, c
     uint8_t salt_prime[SALT_BYTES] = {0};
     uint8_t result;
 
-    // Parse decapsulation key dk_kem
-    memcpy(ek_kem, dk_kem, PUBLIC_KEY_BYTES_KEM);
-    memcpy(dk_pke, dk_kem + PUBLIC_KEY_BYTES_KEM, SECRET_KEY_BYTES_PKE);
-    memcpy(sigma, dk_kem + PUBLIC_KEY_BYTES_KEM + SECRET_KEY_BYTES_PKE, PARAM_K);
+    // Re-derive seed_pke and sigma from dk_kem (the KEM master seed), then
+    // regenerate the PKE keypair (ek_pke, dk_pke)
+    xof_init(&ctx_kem, dk_kem, SEED_BYTES);
+    xof_get_bytes(&ctx_kem, seed_pke, SEED_BYTES);
+    xof_get_bytes(&ctx_kem, sigma, PARAM_K);
+    hqc_pke_keygen(ek_pke, dk_pke, seed_pke);
+
+#ifdef VERBOSE
+    printf("\n\nseed_kem: ");
+    for (size_t i = 0; i < SEED_BYTES; ++i) printf("%02x", dk_kem[i]);
+    printf("\n\nseed_pke: ");
+    for (size_t i = 0; i < SEED_BYTES; ++i) printf("%02x", seed_pke[i]);
+    printf("\n\nsigma: ");
+    for (size_t i = 0; i < PARAM_K; ++i) printf("%02x", sigma[i]);
+    printf("\n\nek_pke: ");
+    for (size_t i = 0; i < PUBLIC_KEY_BYTES_PKE; ++i) printf("%02x", ek_pke[i]);
+    printf("\n\ndk_pke: ");
+    for (size_t i = 0; i < SECRET_KEY_BYTES_PKE; ++i) printf("%02x", dk_pke[i]);
+#endif
 
     // Parse ciphertext c_kem
     hqc_c_kem_from_string(c_pke_u, c_pke_v, salt, c_kem);
@@ -261,14 +267,14 @@ static int8_t hqc_kem_decaps_internal(uint8_t *K_prime, const uint8_t *dk_kem, c
     result = hqc_pke_decrypt((uint64_t *)m_prime, dk_pke, c_pke_u, c_pke_v);
 
     // Compute shared key K_prime and ciphertext c_kem_prime
-    hash_h(hash_ek_kem, ek_kem);
-    hash_g(K_theta_prime, hash_ek_kem, m_prime, salt);
+    hash_h(hash_ek_pke, ek_pke);
+    hash_g(K_theta_prime, hash_ek_pke, m_prime, salt);
 
-    hqc_pke_encrypt(c_pke_prime_u, c_pke_prime_v, ek_kem, (uint64_t *)m_prime, K_theta_prime + SHARED_SECRET_BYTES_KEM);
+    hqc_pke_encrypt(c_pke_prime_u, c_pke_prime_v, ek_pke, (uint64_t *)m_prime, K_theta_prime + SHARED_SECRET_BYTES_KEM);
     memcpy(salt_prime, salt, SALT_BYTES);
 
     // Compute rejection key K_bar
-    hash_j(K_bar, hash_ek_kem, sigma, c_pke_u, c_pke_v, salt);
+    hash_j(K_bar, hash_ek_pke, sigma, c_pke_u, c_pke_v, salt);
     result |= vect_compare((uint8_t *)c_pke_u, (uint8_t *)c_pke_prime_u, VEC_N_SIZE_BYTES);
     result |= vect_compare((uint8_t *)c_pke_v, (uint8_t *)c_pke_prime_v, VEC_N1N2_SIZE_BYTES);
     result |= vect_compare(salt, salt_prime, SALT_BYTES);
@@ -278,16 +284,14 @@ static int8_t hqc_kem_decaps_internal(uint8_t *K_prime, const uint8_t *dk_kem, c
     }
 
 #ifdef VERBOSE
-    printf("\n\nek_kem: ");
-    for (size_t i = 0; i < PUBLIC_KEY_BYTES_KEM; ++i) printf("%02x", ek_kem[i]);
-    printf("\n\ndk_pke: ");
-    for (size_t i = 0; i < SECRET_KEY_BYTES_PKE; ++i) printf("%02x", dk_pke[i]);
     printf("\n\nc_kem: ");
     for (size_t i = 0; i < CIPHERTEXT_BYTES_KEM; ++i) printf("%02x", c_kem[i]);
     printf("\n\nm_prime: ");
     vect_print((uint64_t *)m_prime, PARAM_K);
-    printf("\n\nH(ek_kem): ");
-    for (size_t i = 0; i < SEED_BYTES; ++i) printf("%02x", hash_ek_kem[i]);
+    printf("\n\nH(ek_pke): ");
+    for (size_t i = 0; i < SEED_BYTES; ++i) printf("%02x", hash_ek_pke[i]);
+    printf("\n\nK_prime_candidate: ");
+    for (size_t i = 0; i < SHARED_SECRET_BYTES_KEM; ++i) printf("%02x", K_theta_prime[i]);
     printf("\n\ntheta_prime: ");
     for (size_t i = 0; i < SEED_BYTES; ++i) printf("%02x", K_theta_prime[SHARED_SECRET_BYTES_KEM + i]);
     printf("\n\n\n# Checking Ciphertext - Begin #");
@@ -295,20 +299,23 @@ static int8_t hqc_kem_decaps_internal(uint8_t *K_prime, const uint8_t *dk_kem, c
     vect_print(c_pke_prime_u, VEC_N_SIZE_BYTES);
     printf("\n\nc_prime.v: ");
     vect_print(c_pke_prime_v, VEC_N1N2_SIZE_BYTES);
-    printf("\n\nsalt: ");
+    printf("\n\nsalt_prime: ");
     for (size_t i = 0; i < SALT_BYTES; ++i) printf("%02x", salt_prime[i]);
     printf("\n\n# Checking Ciphertext - End #\n");
+    printf("\n\nK_bar: ");
+    for (size_t i = 0; i < SHARED_SECRET_BYTES_KEM; ++i) printf("%02x", K_bar[i]);
     printf("\n\nK_prime: ");
     for (size_t i = 0; i < SHARED_SECRET_BYTES_KEM; ++i) printf("%02x", K_prime[i]);
 #endif
 
     // Zeroize sensitive data
+    memset_zero(seed_pke, sizeof seed_pke);
+    memset_zero(&ctx_kem, sizeof ctx_kem);
     memset_zero(dk_pke, sizeof dk_pke);
     memset_zero(sigma, sizeof sigma);
     memset_zero(m_prime, sizeof m_prime);
     memset_zero(K_theta_prime, sizeof K_theta_prime);
     memset_zero(K_bar, sizeof K_bar);
-    memset_zero(theta_prime, sizeof theta_prime);
 
     return 0;
 }

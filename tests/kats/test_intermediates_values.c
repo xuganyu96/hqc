@@ -39,7 +39,7 @@ int test_kem_api(void) {
     uint8_t ss2[SHARED_SECRET_BYTES_KEM] = {0};
 
     hqc_kem_keygen(pk, sk);
-    hqc_kem_encaps(ct, ss1, pk);
+    hqc_kem_encaps(ss1, ct, pk);
     hqc_kem_decaps(ss2, sk, ct);
 
     if (memcmp(ss1, ss2, SHARED_SECRET_BYTES_KEM)) {
@@ -56,10 +56,10 @@ int test_kem_api(void) {
     }
 
 #ifdef VERBOSE
-    printf("\n\nsecret1: ");
+    printf("\n\nss_encaps: ");
     for (size_t i = 0; i < SHARED_SECRET_BYTES_KEM; ++i) printf("%02x", ss1[i]);
 
-    printf("\nsecret2: ");
+    printf("\nss_decaps: ");
     for (size_t i = 0; i < SHARED_SECRET_BYTES_KEM; ++i) printf("%02x", ss2[i]);
     printf("\n\n");
 #endif
