@@ -11,6 +11,8 @@
  *   - Randomized fuzzing where mismatches must yield 1.
  * - Fixed-weight sampling (`vect_sample_fixed_weight{1,2}`) with reference and AVX2 back-ends:
  *   - Verifies Hamming weight equals `PARAM_OMEGA` / `PARAM_OMEGA_R`.
+ * - Approved parameters: pins `PARAM_OMEGA` / `PARAM_OMEGA_R` per variant to the
+ *   approved specification values and checks `PARAM_OMEGA_E == PARAM_OMEGA_R`.
  * - `barrett_reduce`:
  *   - Exhaustive check over a large range + explicit edge values.
  *
@@ -481,6 +483,31 @@ static MunitResult test_vect_truncate(const MunitParameter params[], void *data)
 }
 
 /**
+ * @brief Pin (PARAM_OMEGA, PARAM_OMEGA_R) per variant to the approved values and
+ *        check PARAM_OMEGA_E == PARAM_OMEGA_R. Keyed by PARAM_K.
+ */
+static MunitResult test_approved_weights(const MunitParameter params[], void *data) {
+    (void)params;
+    (void)data;
+
+    if (PARAM_K == 16) { /* HQC-1 */
+        munit_assert_int(PARAM_OMEGA, ==, 67);
+        munit_assert_int(PARAM_OMEGA_R, ==, 76);
+    } else if (PARAM_K == 24) { /* HQC-3 */
+        munit_assert_int(PARAM_OMEGA, ==, 101);
+        munit_assert_int(PARAM_OMEGA_R, ==, 114);
+    } else if (PARAM_K == 32) { /* HQC-5 */
+        munit_assert_int(PARAM_OMEGA, ==, 132);
+        munit_assert_int(PARAM_OMEGA_R, ==, 150);
+    } else {
+        munit_error("unknown parameter set (unexpected PARAM_K)");
+    }
+
+    munit_assert_int(PARAM_OMEGA_E, ==, PARAM_OMEGA_R);
+    return MUNIT_OK;
+}
+
+/**
  * @brief Test registry for Vectors routines.
  */
 MunitTest vector_tests[] = {
@@ -493,6 +520,9 @@ MunitTest vector_tests[] = {
 
     /* barrett_reduce */
     MUNIT_TEST_ENTRY("barrett_reduce", test_barrett_reduce),
+
+    /* approved fixed-weight parameters */
+    MUNIT_TEST_ENTRY("approved_weights", test_approved_weights),
 
 #ifndef HQC_X86_IMPL
     /* Reference fixed-weight sampling */

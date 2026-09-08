@@ -15,9 +15,9 @@
 #define PARAM_N1                    46          ///< Define the parameter n1 of the scheme (length of Reed–Solomon code)
 #define PARAM_N2                    384         ///< Define the parameter n2 of the scheme (length of Duplicated Reed–Muller code)
 #define PARAM_N1N2                  17664       ///< Define the length in bits of the concatenated code
-#define PARAM_OMEGA                 66          ///< Define the parameter omega of the scheme
-#define PARAM_OMEGA_E               75          ///< Define the parameter omega_e of the scheme
-#define PARAM_OMEGA_R               75          ///< Define the parameter omega_r of the scheme
+#define PARAM_OMEGA                 67          ///< Define the parameter omega of the scheme
+#define PARAM_OMEGA_E               76          ///< Define the parameter omega_e of the scheme
+#define PARAM_OMEGA_R               76          ///< Define the parameter omega_r of the scheme
 #define PARAM_SECURITY              128         ///< Define the security level corresponding to the chosen parameters
 #define PARAM_SECURITY_BYTES        16          ///< Define the security level in bytes
 #define PARAM_DFR_EXP               128         ///< Define the decryption failure rate exponent

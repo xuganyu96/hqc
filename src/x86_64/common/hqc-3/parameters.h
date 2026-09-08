@@ -15,7 +15,7 @@
 #define PARAM_N1                    56          ///< Define the parameter n1 of the scheme (length of Reed-Solomon code)
 #define PARAM_N2                    640         ///< Define the parameter n2 of the scheme (length of Duplicated Reed-Muller code)
 #define PARAM_N1N2                  35840       ///< Define the length in bits of the concatenated code
-#define PARAM_OMEGA                 100         ///< Define the parameter omega of the scheme
+#define PARAM_OMEGA                 101         ///< Define the parameter omega of the scheme
 #define PARAM_OMEGA_E               114         ///< Define the parameter omega_e of the scheme
 #define PARAM_OMEGA_R               114         ///< Define the parameter omega_r of the scheme
 #define PARAM_SECURITY              192         ///< Define the security level corresponding to the chosen parameters
