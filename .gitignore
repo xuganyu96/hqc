@@ -49,3 +49,14 @@
 # OS-specific
 .DS_Store
 Thumbs.db
+
+*.cmake
+*Makefile
+*CMakeFiles
+compile_commands.json
+tests/api/test_api_hqc_*
+tests/bench/benchmark_gf_hqc_*
+tests/bench/benchmark_kem_hqc_*
+tests/kats/test_intermediates_values_hqc_*
+tests/kats/test_kat_hqc_*
+tests/unit/test_unit_hqc_*

@@ -1,15 +1,23 @@
-# Tools
+### Tools
 
 This directory contains small C utilities used to inspect and validate HQC
 building blocks.
 
 ## Files
 
+- `kat_generator.sh`: script to compute the KATs and update the `kats` folder
+
 - `rs/main.c`: command-line entry point for the Reed-Solomon tool
 - `rs/constants.c`, `rs/constants.h`: Reed-Solomon parameters, generation logic, packing, and printing
 - `rs/verify.c`, `rs/verify.h`: verification against Reed-Solomon constants stored in the repository
 
-## Build Reed-Solomon Tool
+## KAT generator
+
+Run sh ./tools/`kat_generator.sh` script from the repository root directory to compile both ref and avx versions of the scheme, compute the KATs and update the `kats` folder
+
+## Reed-Solomon Tools
+
+# Build 
 
 Run from the repository root:
 
@@ -18,7 +26,7 @@ cmake -S . -B build -DHQC_BUILD_TOOLS=ON
 cmake --build build --target rs_constants
 ```
 
-## Commands
+# Commands
 
 ```bash
 ./build/tools/rs/rs_constants gf-256-field-info
