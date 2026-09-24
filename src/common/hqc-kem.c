@@ -44,7 +44,7 @@ static int8_t hqc_kem_keygen_internal(uint8_t *ek_kem, uint8_t *dk_kem, const ui
     shake256_xof_ctx ctx_kem = {0};
 
     // Derive seed_pke from seed_kem
-    xof_init(&ctx_kem, seed_kem, SEED_BYTES);
+    xof_init_dom_sep(&ctx_kem, seed_kem, SEED_BYTES, PARAM_K);
     xof_get_bytes(&ctx_kem, seed_pke, SEED_BYTES);
 
     // Compute HQC-PKE keypair, then assemble the KEM keys
@@ -242,7 +242,7 @@ static int8_t hqc_kem_decaps_internal(uint8_t *K_prime, const uint8_t *dk_kem, c
 
     // Re-derive seed_pke and sigma from dk_kem (the KEM master seed), then
     // regenerate the PKE keypair (ek_pke, dk_pke)
-    xof_init(&ctx_kem, dk_kem, SEED_BYTES);
+    xof_init_dom_sep(&ctx_kem, dk_kem, SEED_BYTES, PARAM_K);
     xof_get_bytes(&ctx_kem, seed_pke, SEED_BYTES);
     xof_get_bytes(&ctx_kem, sigma, PARAM_K);
     hqc_pke_keygen(ek_pke, dk_pke, seed_pke);

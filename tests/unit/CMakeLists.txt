@@ -19,6 +19,7 @@ set(TESTS_DIR     ${CMAKE_SOURCE_DIR}/tests/unit)
 set(GF_TEST_SRC   ${TESTS_DIR}/test_gf.c)
 set(RS_TEST_SRC   ${TESTS_DIR}/test_reed_solomon.c)
 set(VEC_TEST_SRC  ${TESTS_DIR}/test_vector.c)
+set(SYM_TEST_SRC  ${TESTS_DIR}/test_symmetric.c)
 set(MAIN_TEST_SRC ${TESTS_DIR}/tests_main.c)
 set(GF2X_NTL_SRC  ${TESTS_DIR}/test_vect_mul.cpp)
 set(TEST_RANDOMBYTES_SRC ${CMAKE_SOURCE_DIR}/tests/common/randombytes.c)
@@ -72,6 +73,7 @@ foreach(param_variant IN LISTS VARIANTS)
             ${GF_TEST_SRC}
             ${RS_TEST_SRC}
             ${VEC_TEST_SRC}
+            ${SYM_TEST_SRC}
             ${MAIN_TEST_SRC}
             ${TEST_RANDOMBYTES_SRC}
     )

@@ -15,10 +15,28 @@
  * @param[in]  seed_size Size of the seed in bytes.
  */
 void xof_init(shake256_xof_ctx *xof_ctx, const uint8_t *seed, uint32_t seed_size) {
-    uint8_t xof_domain = HQC_XOF_DOMAIN;
     shake256_inc_init(xof_ctx);
     shake256_inc_absorb(xof_ctx, seed, seed_size);
-    shake256_inc_absorb(xof_ctx, &xof_domain, 1);
+    shake256_inc_finalize(xof_ctx);
+}
+
+/**
+ * @brief Initializes a SHAKE256 XOF context for KEM seed expansion, binding the
+ *        parameter set through the Reed-Solomon dimension k.
+ *
+ * Absorbs seed || (k as a single byte), per HQC-KEM.KeyGen_internal and
+ * HQC-KEM.Decaps_internal, so a seed reused across parameter sets yields
+ * unrelated keys.
+ *
+ * @param[out] xof_ctx Pointer to the XOF context to be initialized.
+ * @param[in]  seed    Pointer to the SEED_BYTES-byte KEM seed.
+ * @param[in]  seed_size Size of the seed in bytes.
+ * @param[in]  domain_separator Domain separator.
+ */
+void xof_init_dom_sep(shake256_xof_ctx *xof_ctx, const uint8_t *seed, uint32_t seed_size, uint8_t domain_separator) {
+    shake256_inc_init(xof_ctx);
+    shake256_inc_absorb(xof_ctx, seed, seed_size);
+    shake256_inc_absorb(xof_ctx, &domain_separator, 1);
     shake256_inc_finalize(xof_ctx);
 }
 

@@ -38,11 +38,6 @@ typedef sha3_256incctx sha3_256_ctx;
  */
 typedef shake256incctx shake256_xof_ctx;
 
-/** @def HQC_XOF_DOMAIN
- *  @brief Domain separator for HQC extendable-output function.
- */
-#define HQC_XOF_DOMAIN 1
-
 /** @def HQC_G_FCT_DOMAIN
  *  @brief Domain separator for the G(·) function in HQC.
  */
@@ -64,6 +59,7 @@ typedef shake256incctx shake256_xof_ctx;
 #define HQC_J_FCT_DOMAIN 3
 
 void xof_init(shake256_xof_ctx *xof_ctx, const uint8_t *seed, uint32_t seed_size);
+void xof_init_dom_sep(shake256_xof_ctx *xof_ctx, const uint8_t *seed, uint32_t seed_size, uint8_t domain_separator);
 void xof_get_bytes(shake256_xof_ctx *xof_ctx, uint8_t *output, uint32_t output_size);
 
 void hash_g(uint8_t *output, const uint8_t h_ek[SEED_BYTES], const uint8_t m[PARAM_K], const uint8_t salt[SALT_BYTES]);
