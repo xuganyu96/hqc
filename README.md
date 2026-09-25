@@ -1,13 +1,16 @@
-# Hamming Quasi-Cyclic (HQC)
-
 [![pipeline status](https://gitlab.com/pqc-hqc/hqc/badges/main/pipeline.svg)](https://gitlab.com/pqc-hqc/hqc/-/commits/main)
 [![Latest Release](https://gitlab.com/pqc-hqc/hqc/-/badges/release.svg)](https://gitlab.com/pqc-hqc/hqc/-/releases)
 
-**This repository provides the official implementation of [HQC](https://pqc-hqc.org), a code-based Key Encapsulation Mechanism (KEM) whose security is based on the hardness of solving the Quasi-Cyclic Syndrome Decoding (QCSD) problem. HQC is one of the selected algorithms from the [NIST's Post-Quantum Cryptography Standardization Project](https://csrc.nist.gov/projects/post-quantum-cryptography).**
+---
+# Hamming Quasi-Cyclic (HQC)
+---
+
+[HQC](https://pqc-hqc.org) is a code-based Key Encapsulation Mechanism (KEM) selected by NIST during the [NIST's Post-Quantum Cryptography Standardization Project](https://csrc.nist.gov/projects/post-quantum-cryptography). This repository contains the implementation provided by the HQC team.
 
 # Structure
+---
 
-**The project is organized into modular components, including cross-platform code, tests, known-answer vectors, and packaging tools.**
+The project is organized into modular components, including cross-platform code, tests, known-answer vectors, and packaging tools.
 
 + **src/** – HQC implementations
   + **common/** – shared cross-platform source/header files
@@ -33,17 +36,25 @@
 + **LICENSE** – project license
 + **README.md** – this file
 
-# Prerequisites
 
+
+
+
+# Usage
+---
+
+## Requirements
+
+- **C compiler** (GCC ≥ 11, Clang, etc.) with C11 support
 - **CMake** ≥ 3.21
-- **A C compiler** (GCC ≥ 11, Clang, etc.) with C11 support
-- **Ninja** or **Make** (or another CMake generator)
+- **Ninja** or **Make** or another CMake generator
 - **clang-format** for code formatting
-- **NTL + GMP** (optional) for GF2X verification unit tests; missing deps will skip those tests.
+- **NTL + GMP** (optional) for unit tests (skipped is dependecies are missing).
 
-# Building & Testing
 
-You can build any variant in an out-of-tree directory and run the full test-suite
+## Building & Testing
+
+One can build any variant in an out-of-tree directory and run the full test-suite
 with a single command line.  Choose the architecture (`HQC_ARCH`), the exact
 SIMD back-end if applicable (`HQC_X86_IMPL`), and an optional runtime sanitizer
 (`HQC_SANITIZER`).
@@ -69,7 +80,9 @@ ctest --test-dir build-<arch> --output-on-failure -j$(nproc)
 - **`<impl>`**: `avx256`
 - **`<sanitizer>`**: `NONE`, `ASAN`, `LSAN`, `MSAN`, `UBSAN`
 
+
 **Example 1 (Portable reference implementation)**
+
 ```bash
 rm -rf build-ref &&
 cmake -S . -B build-ref \
@@ -78,7 +91,10 @@ cmake -S . -B build-ref \
 cmake --build build-ref -j$(nproc) &&
 ctest  --test-dir build-ref -j$(nproc)
 ```
+
+
 **Example 2 (Optimized AVX2 implementation (Haswell/AVX256))**
+
 ```bash
 rm -rf build-avx256 &&
 cmake -S . -B build-avx256 \
@@ -89,20 +105,36 @@ cmake --build build-avx256 -j$(nproc) &&
 ctest  --test-dir build-avx256 -j$(nproc)
 ```
 
+
 ## Developer Tools
 
-Optional developer tools live under `tools/`. Build them with `-DHQC_BUILD_TOOLS=ON`; see [`tools/README.md`](tools/README.md) for commands and usage.
+Optional developer tools live under `tools/` and can be built using `-DHQC_BUILD_TOOLS=ON` (see [`tools/README.md`](tools/README.md) for commands and usage).
 
-## Code style & CI - **format *before* every commit**
 
-All sources **must be formatted with `clang-format`** before every commit.
-Our CI pipeline runs `cmake --build <build-dir> --target check-format`  
-and will fail if any file deviates from the project style.
 
-### Quick usage
 
+
+# Security
+---
+
+**Scope.** This project targets resistance against timing attacks only, other side-channels attacks are not currently considered.
+
+This project is expected to avoid secret-dependent control flows and access to secret memory locations in order to thwart timing attacks.
+Hardening the code against compiler-induced timing attacks is a work in progress and only vulnerabilities introduced when compiled following our compilation instructions on targetted architectures will be considered (see #11 and #12).
+
+
+
+
+
+# Contributing
+---
+
+Till the FIPS 207 standard is available, people are encouraged to report issues here by opening a `work item`. \
+Merge requests addressing work items are also appreciated.
+
+All sources must be formatted with `clang-format` before every commit.
 ```bash
 # Run from the build directory you already created
 cmake --build build-<arch> --target clang-format        # rewrites files in-place
-cmake --build build-<arch> --target check-format        # just checks, no changes
+cmake --build build-<arch> --target check-format        # check format 
 ```
