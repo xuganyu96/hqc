@@ -39,11 +39,10 @@ if(HQC_ARCH STREQUAL "x86_64")
         list(APPEND HQC_C_FLAGS
                 -funroll-loops
                 -mavx -mavx2 -mbmi -mpclmul
-                -Wno-error=ignored-optimization-argument
         )
     else()
         list(APPEND HQC_C_FLAGS
-                -funroll-all-loops -flto -mavx -mavx2 -mbmi -mpclmul
+                -funroll-all-loops -mavx -mavx2 -mbmi -mpclmul
         )
     endif()
 endif()

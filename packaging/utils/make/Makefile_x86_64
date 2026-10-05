@@ -1,6 +1,6 @@
 CC:=gcc
 
-CFLAGS:=-O3 -std=c99 -funroll-all-loops -flto -mavx -mavx2 -mpclmul -pedantic -Wall -Wextra
+CFLAGS:=-O3 -std=c99 -funroll-all-loops -mavx -mavx2 -mpclmul -pedantic -Wall -Wextra
 
 SHA3_SRC:=lib/fips202/fips202.c
 SHA3_INCLUDE:=-I lib/fips202
