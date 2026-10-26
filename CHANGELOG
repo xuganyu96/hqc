@@ -1,0 +1,21 @@
+### HQC v5.1.0
+
+# Features
+- Update HQC-KEM API
+- Switch to compressed format for dk_kem
+- Update w, w_r, w_e parameters
+- Update polynomial used in GF(2^8)
+- Update sampling
+- Improve RS decoding performance
+- Update RM(1,7) generator matrix
+- Update XOF domain separator
+
+# Build system & Quality
+- Add NTL-based unit tests for vect_mul
+- Remove -flto from compilation flags
+- Add script to update the KAT folder
+- Update README (security goals, contributing)
+
+
+### Previous versions
+Changelog prior to v5.0.0 (2025-08-22) is accessible in the repository archives at https://pqc-hqc.org/doc/archive_submissions.zip.
