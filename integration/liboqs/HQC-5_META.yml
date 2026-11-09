@@ -47,8 +47,8 @@ implementations:
   folder_name: src
   compile_opts: -DHQC_PARAMETER_SET=5 -DHQC_NAMESPACE_PREFIX=PQCHQC_HQC5_C
   signature_keypair: PQCHQC_HQC5_C_hqc_kem_keygen
-  signature_enc: PQCHQC_HQC5_C_hqc_kem_encaps
-  signature_dec: PQCHQC_HQC5_C_hqc_kem_decaps
+  signature_enc: PQCHQC_HQC5_C_hqc_kem_encaps_oqs
+  signature_dec: PQCHQC_HQC5_C_hqc_kem_decaps_oqs
   # signature_enc_derand: N/A
   # signature_keypair_derand: N/A
   sources: common/code.c common/code.h ref/hqc-5/parameters.h ../integration/liboqs/hqc-kem.h
@@ -58,14 +58,14 @@ implementations:
     ../lib/fips202/fips202.h ../lib/fips202/fips202.c ref/vector.h common/symmetric.c
     ref/gf.c ref/gf.h ref/gf2x.c ref/gf2x.h ref/hqc.c ref/hqc.h ref/parsing.c ref/parsing.h
     ref/reed_muller.c ref/reed_solomon.c ref/vector.c ../integration/liboqs/namespace.h
-    ../integration/liboqs/randombytes.c
+    ../integration/liboqs/oqs_glue.c
 - name: x86_64
   version: 2026-10-12
   folder_name: src
   compile_opts: -DHQC_PARAMETER_SET=5 -DHQC_NAMESPACE_PREFIX=PQCHQC_HQC5_AVX256
   signature_keypair: PQCHQC_HQC5_AVX256_hqc_kem_keygen
-  signature_enc: PQCHQC_HQC5_AVX256_hqc_kem_encaps
-  signature_dec: PQCHQC_HQC5_AVX256_hqc_kem_decaps
+  signature_enc: PQCHQC_HQC5_AVX256_hqc_kem_encaps_oqs
+  signature_dec: PQCHQC_HQC5_AVX256_hqc_kem_decaps_oqs
   # signature_enc_derand: N/A
   # signature_keypair_derand: N/A
   sources: common/code.c common/code.h x86_64/common/hqc-5/parameters.h ../integration/liboqs/hqc-kem.h
@@ -76,7 +76,7 @@ implementations:
     x86_64/common/hqc.c x86_64/common/gf2x.h x86_64/common/parsing.c x86_64/common/parsing.h
     x86_64/avx256/gf.c x86_64/avx256/gf.h x86_64/avx256/reed_muller.c x86_64/avx256/vector.c
     x86_64/avx256/hqc-5/reed_solomon.c x86_64/common/hqc-5/gf2x.c ../integration/liboqs/namespace.h
-    ../integration/liboqs/randombytes.c
+    ../integration/liboqs/oqs_glue.c
   supported_platforms:
     - architecture: x86_64
       operating_systems:
