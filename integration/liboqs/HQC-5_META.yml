@@ -1,0 +1,87 @@
+name: HQC-5
+type: kem
+claimed-nist-level: 5
+claimed-security: IND-CCA2
+# Sourced from src/common/hqc-5/hqc-kem.h
+length-public-key: 7237
+length-ciphertext: 14421
+length-secret-key: 32
+length-shared-secret: 32
+# length-keypair-seed: 0
+# length-encaps-seed: 0
+# NOTE: for test_kat (1 test case):
+# head -8 kats/ref/hqc-5/PQCkemKAT_32.rsp | tail -6 | sha256sum
+# for test_kat_all (100 test cases):
+# head -701 kats/ref/hqc-5/PQCkemKAT_32.rsp | tail -699 | sha256sum
+# TODO: I did not verify this yet
+nistkat-sha256: 80fddaba6f95e1ed6ca1b155e5808fee6da1fafdff8d442af8155f548c833c71
+# testvectors-sha256: N/A
+principal-submitters:
+  - Philippe Gaborit
+auxiliary-submitters:
+  - Carlos Aguilar-Melchor
+  - Nicolas Aragon
+  - Slim Bettaieb
+  - Loïc Bidoux
+  - Olivier Blazy
+  - Jean-Christophe Deneuville
+  - Edoardo Persichetti
+  - Gilles Zémor
+  - Jurjen Bos
+  - Arnaud Dion
+  - Jérôme Lacan
+  - Jean-Marc Robert
+  - Pascal Véron
+  - Paulo L. Barreto
+  - Santosh Ghosh
+  - Shay Gueron
+  - Tim Güneysu
+  - Rafael Misoczki
+  - Jan Richter-Brokmann
+  - Nicolas Sendrier
+  - Jean-Pierre Tillich
+  - Valentin Vasseur
+implementations:
+- name: ref
+  version: 2026-10-12
+  folder_name: src
+  compile_opts: -DHQC_PARAMETER_SET=5 -DHQC_NAMESPACE_PREFIX=PQCHQC_HQC5_C
+  signature_keypair: PQCHQC_HQC5_C_hqc_kem_keygen
+  signature_enc: PQCHQC_HQC5_C_hqc_kem_encaps
+  signature_dec: PQCHQC_HQC5_C_hqc_kem_decaps
+  # signature_enc_derand: N/A
+  # signature_keypair_derand: N/A
+  sources: common/code.c common/code.h ref/hqc-5/parameters.h ../integration/liboqs/hqc-kem.h
+    common/crypto_memset.h common/reed_muller.h ref/hqc-5/reed_solomon.h
+    common/crypto_memset.c common/hqc-kem.c ref/hqc.h ref/parsing.h
+    common/randombytes.h common/symmetric.h ref/data_structures.h
+    ../lib/fips202/fips202.h ../lib/fips202/fips202.c ref/vector.h common/symmetric.c
+    ref/gf.c ref/gf.h ref/gf2x.c ref/gf2x.h ref/hqc.c ref/hqc.h ref/parsing.c ref/parsing.h
+    ref/reed_muller.c ref/reed_solomon.c ref/vector.c
+- name: x86_64
+  version: 2026-10-12
+  folder_name: src
+  compile_opts: -DHQC_PARAMETER_SET=5 -DHQC_NAMESPACE_PREFIX=PQCHQC_HQC5_AVX256
+  signature_keypair: PQCHQC_HQC5_AVX256_hqc_kem_keygen
+  signature_enc: PQCHQC_HQC5_AVX256_hqc_kem_encaps
+  signature_dec: PQCHQC_HQC5_AVX256_hqc_kem_decaps
+  # signature_enc_derand: N/A
+  # signature_keypair_derand: N/A
+  sources: common/code.c common/code.h x86_64/common/hqc-5/parameters.h ../integration/liboqs/hqc-kem.h
+    common/crypto_memset.h common/reed_muller.h x86_64/common/reed_solomon.h
+    common/crypto_memset.c common/hqc-kem.c x86_64/common/hqc.h x86_64/common/parsing.h
+    common/randombytes.h common/symmetric.h x86_64/common/data_structures.h
+    ../lib/fips202/fips202.h ../lib/fips202/fips202.c x86_64/common/vector.h common/symmetric.c
+    x86_64/common/hqc.c x86_64/common/gf2x.h x86_64/common/parsing.c x86_64/common/parsing.h
+    x86_64/avx256/gf.c x86_64/avx256/gf.h x86_64/avx256/reed_muller.c x86_64/avx256/vector.c
+    x86_64/avx256/hqc-5/reed_solomon.c x86_64/common/hqc-5/gf2x.c
+  supported_platforms:
+    - architecture: x86_64
+      operating_systems:
+        - Linux
+        - Darwin
+      required_flags:
+        - avx
+        - avx2
+        - bmi1
+        - pclmulqdq
