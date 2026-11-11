@@ -52,8 +52,8 @@ implementations:
   # signature_enc_derand: N/A
   # signature_keypair_derand: N/A
   sources: common/code.c common/code.h ref/hqc-3/parameters.h ../integration/liboqs/hqc-kem.h
-    common/crypto_memset.h common/reed_muller.h ref/hqc-3/reed_solomon.h
-    common/crypto_memset.c common/hqc-kem.c ref/parsing.h
+    ../integration/liboqs/crypto_memset.h common/reed_muller.h ref/hqc-3/reed_solomon.h
+    common/hqc-kem.c ref/parsing.h
     common/randombytes.h ../integration/liboqs/symmetric.h ref/data_structures.h
     ref/vector.h ../integration/liboqs/symmetric.c
     ref/gf.c ref/gf.h ref/gf2x.c ref/gf2x.h ref/hqc.c ref/hqc.h ref/parsing.c
@@ -69,8 +69,8 @@ implementations:
   # signature_enc_derand: N/A
   # signature_keypair_derand: N/A
   sources: common/code.c common/code.h x86_64/common/hqc-3/parameters.h ../integration/liboqs/hqc-kem.h
-    common/crypto_memset.h common/reed_muller.h x86_64/common/reed_solomon.h
-    common/crypto_memset.c common/hqc-kem.c x86_64/common/hqc.h x86_64/common/parsing.h
+    ../integration/liboqs/crypto_memset.h common/reed_muller.h x86_64/common/reed_solomon.h
+    common/hqc-kem.c x86_64/common/hqc.h x86_64/common/parsing.h
     common/randombytes.h ../integration/liboqs/symmetric.h x86_64/common/data_structures.h
     x86_64/common/vector.h ../integration/liboqs/symmetric.c
     x86_64/common/hqc.c x86_64/common/gf2x.h x86_64/common/parsing.c
