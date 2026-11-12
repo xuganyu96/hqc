@@ -1,0 +1,23 @@
+commons:
+  - name: hqc_shims
+    folder_name: integration/liboqs
+    sources:  crypto_memset.h hqc-kem.h namespace.h symmetric.h symmetric.c oqs_glue.c
+    include_only: true
+  - name: hqc_common
+    folder_name: src/common
+    sources: randombytes.h code.h reed_muller.h hqc-kem.c code.c
+    include_only: true
+  - name: hqc_ref_common
+    folder_name: src/ref
+    sources: parsing.c gf.c vector.c gf2x.c hqc.h reed_solomon.c parsing.h
+      data_structures.h gf.h reed_muller.c gf2x.h vector.h hqc.c
+    include_only: true
+  # NOTE: HQC's upstream denotes x86_64/avx256 as separate from x86_64/common,
+  #       implying other x86 backends (maybe AVX512?), but for now I am globbing
+  #       them together
+  - name: hqc_avx256_common
+    folder_name: src/x86_64
+    sources: avx256/gf.c avx256/gf.h avx256/reed_muller.c avx256/vector.c
+      common/data_structures.h common/gf2x.h common/hqc.c common/hqc.h
+      common/parsing.c common/parsing.h common/reed_solomon.h common/vector.h
+    include_only: true

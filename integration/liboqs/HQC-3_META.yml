@@ -44,39 +44,26 @@ auxiliary-submitters:
 implementations:
 - name: ref
   version: 2026-10-12
-  folder_name: src
+  folder_name: src/ref
   compile_opts: -DHQC_PARAMETER_SET=3 -DHQC_NAMESPACE_PREFIX=PQCHQC_HQC3_C
   signature_keypair: PQCHQC_HQC3_C_hqc_kem_keygen
   signature_enc: PQCHQC_HQC3_C_hqc_kem_encaps_oqs
   signature_dec: PQCHQC_HQC3_C_hqc_kem_decaps_oqs
   # signature_enc_derand: N/A
   # signature_keypair_derand: N/A
-  sources: common/code.c common/code.h ref/hqc-3/parameters.h ../integration/liboqs/hqc-kem.h
-    ../integration/liboqs/crypto_memset.h common/reed_muller.h ref/hqc-3/reed_solomon.h
-    common/hqc-kem.c ref/parsing.h
-    common/randombytes.h ../integration/liboqs/symmetric.h ref/data_structures.h
-    ref/vector.h ../integration/liboqs/symmetric.c
-    ref/gf.c ref/gf.h ref/gf2x.c ref/gf2x.h ref/hqc.c ref/hqc.h ref/parsing.c
-    ref/reed_muller.c ref/reed_solomon.c ref/vector.c ../integration/liboqs/namespace.h
-    ../integration/liboqs/oqs_glue.c
+  sources: hqc-3/parameters.h hqc-3/reed_solomon.h
+  common_dep: hqc_shims hqc_common hqc_ref_common
 - name: x86_64
   version: 2026-10-12
-  folder_name: src
+  folder_name: src/x86_64
   compile_opts: -DHQC_PARAMETER_SET=3 -DHQC_NAMESPACE_PREFIX=PQCHQC_HQC3_AVX256
   signature_keypair: PQCHQC_HQC3_AVX256_hqc_kem_keygen
   signature_enc: PQCHQC_HQC3_AVX256_hqc_kem_encaps_oqs
   signature_dec: PQCHQC_HQC3_AVX256_hqc_kem_decaps_oqs
   # signature_enc_derand: N/A
   # signature_keypair_derand: N/A
-  sources: common/code.c common/code.h x86_64/common/hqc-3/parameters.h ../integration/liboqs/hqc-kem.h
-    ../integration/liboqs/crypto_memset.h common/reed_muller.h x86_64/common/reed_solomon.h
-    common/hqc-kem.c x86_64/common/hqc.h x86_64/common/parsing.h
-    common/randombytes.h ../integration/liboqs/symmetric.h x86_64/common/data_structures.h
-    x86_64/common/vector.h ../integration/liboqs/symmetric.c
-    x86_64/common/hqc.c x86_64/common/gf2x.h x86_64/common/parsing.c
-    x86_64/avx256/gf.c x86_64/avx256/gf.h x86_64/avx256/reed_muller.c x86_64/avx256/vector.c
-    x86_64/avx256/hqc-3/reed_solomon.c x86_64/common/hqc-3/gf2x.c ../integration/liboqs/namespace.h
-    ../integration/liboqs/oqs_glue.c
+  sources: common/hqc-3/parameters.h common/hqc-3/gf2x.c avx256/hqc-3/reed_solomon.c
+  common_dep: hqc_shims hqc_common hqc_avx256_common
   supported_platforms:
     - architecture: x86_64
       operating_systems:
