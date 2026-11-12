@@ -46,7 +46,7 @@ implementations:
   version: 2026-10-12
   folder_name: src/ref
   compile_opts: -DHQC_PARAMETER_SET=5 -DHQC_NAMESPACE_PREFIX=PQCHQC_HQC5_C
-  signature_keypair: PQCHQC_HQC5_C_hqc_kem_keygen
+  signature_keypair: PQCHQC_HQC5_C_hqc_kem_keygen_oqs
   signature_enc: PQCHQC_HQC5_C_hqc_kem_encaps_oqs
   signature_dec: PQCHQC_HQC5_C_hqc_kem_decaps_oqs
   # signature_enc_derand: N/A
@@ -57,7 +57,7 @@ implementations:
   version: 2026-10-12
   folder_name: src/x86_64
   compile_opts: -DHQC_PARAMETER_SET=5 -DHQC_NAMESPACE_PREFIX=PQCHQC_HQC5_AVX256
-  signature_keypair: PQCHQC_HQC5_AVX256_hqc_kem_keygen
+  signature_keypair: PQCHQC_HQC5_AVX256_hqc_kem_keygen_oqs
   signature_enc: PQCHQC_HQC5_AVX256_hqc_kem_encaps_oqs
   signature_dec: PQCHQC_HQC5_AVX256_hqc_kem_decaps_oqs
   # signature_enc_derand: N/A
