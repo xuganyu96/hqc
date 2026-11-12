@@ -1,11 +1,11 @@
 commons:
   - name: hqc_shims
     folder_name: integration/liboqs
-    sources:  crypto_memset.h hqc-kem.h namespace.h symmetric.h symmetric.c oqs_glue.c
+    sources:  crypto_memset.h hqc-kem.h namespace.h symmetric.h symmetric.c oqs_glue.c randombytes_fallible.h
     include_only: true
   - name: hqc_common
     folder_name: src/common
-    sources: randombytes.h code.h reed_muller.h hqc-kem.c code.c
+    sources: code.h reed_muller.h hqc-kem.c code.c
     include_only: true
   - name: hqc_ref_common
     folder_name: src/ref
