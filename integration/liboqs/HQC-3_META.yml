@@ -13,7 +13,6 @@ length-shared-secret: 32
 # head -8 kats/ref/hqc-3/PQCkemKAT_32.rsp | tail -6 | sha256sum
 # for test_kat_all (100 test cases):
 # head -701 kats/ref/hqc-3/PQCkemKAT_32.rsp | tail -699 | sha256sum
-# TODO: I did not verify this yet
 nistkat-sha256: 20f8ae4ba7c449b6e1941df1efb3e8659dcff1cfedbae0c1287fef1ce79de3b2
 # testvectors-sha256: N/A
 principal-submitters:
