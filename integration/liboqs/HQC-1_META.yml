@@ -53,7 +53,7 @@ implementations:
   signature_dec: PQCHQC_HQC1_C_hqc_kem_decaps_oqs
   # signature_enc_derand: N/A
   # signature_keypair_derand: N/A
-  sources: hqc-1/parameters.h hqc-1/reed_solomon.h
+  sources: hqc-1/parameters.h hqc-1/reed_solomon.h ../../LICENSE
   common_dep: hqc_shims hqc_common hqc_ref_common
 - name: x86_64
   version: 2026-10-12
@@ -64,7 +64,7 @@ implementations:
   signature_dec: PQCHQC_HQC1_AVX256_hqc_kem_decaps_oqs
   # signature_enc_derand: N/A
   # signature_keypair_derand: N/A
-  sources: common/hqc-1/parameters.h common/hqc-1/gf2x.c avx256/hqc-1/reed_solomon.c
+  sources: common/hqc-1/parameters.h common/hqc-1/gf2x.c avx256/hqc-1/reed_solomon.c ../../LICENSE
   common_dep: hqc_shims hqc_common hqc_avx256_common
   supported_platforms:
     - architecture: x86_64
