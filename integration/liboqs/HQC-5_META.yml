@@ -42,7 +42,7 @@ auxiliary-submitters:
   - Valentin Vasseur
 implementations:
 - name: ref
-  version: 2026-10-12
+  version: v5.1.0
   folder_name: src/ref
   compile_opts: -DHQC_PARAMETER_SET=5 -DHQC_NAMESPACE_PREFIX=PQCHQC_HQC5_C
   signature_keypair: PQCHQC_HQC5_C_hqc_kem_keygen_oqs
@@ -53,7 +53,7 @@ implementations:
   sources: hqc-5/parameters.h hqc-5/reed_solomon.h ../../LICENSE
   common_dep: hqc_shims hqc_common hqc_ref_common
 - name: x86_64
-  version: 2026-10-12
+  version: v5.1.0
   folder_name: src/x86_64
   compile_opts: -DHQC_PARAMETER_SET=5 -DHQC_NAMESPACE_PREFIX=PQCHQC_HQC5_AVX256
   signature_keypair: PQCHQC_HQC5_AVX256_hqc_kem_keygen_oqs
